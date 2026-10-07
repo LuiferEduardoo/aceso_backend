@@ -2,8 +2,14 @@ from typing import Annotated
 
 from fastapi import APIRouter, Path, status
 
-from aceso.gym.api.deps import RoutineServiceDep
-from aceso.gym.api.schemas import RoutineCreate, RoutineRead, RoutineUpdate
+from aceso.gym.api.deps import ApplyRoutineDep, RoutineServiceDep
+from aceso.gym.api.schemas import (
+    ApplyRoutineRequest,
+    RoutineCreate,
+    RoutineRead,
+    RoutineUpdate,
+    WorkoutSessionRead,
+)
 from aceso.gym.domain.entities import Routine
 from aceso.identity.api.deps import CurrentUserIdDep
 from aceso.shared.domain.errors import InvalidOperationError
@@ -67,3 +73,18 @@ async def delete_routine(
     routine_id: RoutineId, user_id: CurrentUserIdDep, service: RoutineServiceDep
 ) -> None:
     await service.delete(user_id, routine_id)
+
+
+@router.post(
+    "/{routine_id}/apply",
+    status_code=status.HTTP_201_CREATED,
+    summary="Schedule a workout session from this routine on a date",
+)
+async def apply_routine(
+    routine_id: RoutineId,
+    payload: ApplyRoutineRequest,
+    user_id: CurrentUserIdDep,
+    use_case: ApplyRoutineDep,
+) -> WorkoutSessionRead:
+    session = await use_case.execute(user_id, routine_id, payload.scheduled_date, payload.notes)
+    return WorkoutSessionRead.model_validate(session)

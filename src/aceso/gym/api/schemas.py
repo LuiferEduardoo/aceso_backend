@@ -245,3 +245,8 @@ class WorkoutSessionRead(BaseModel):
     notes: str | None
     exercises: list[SessionExerciseRead]
     created_at: datetime
+
+
+class ApplyRoutineRequest(BaseModel):
+    scheduled_date: date
+    notes: str | None = None

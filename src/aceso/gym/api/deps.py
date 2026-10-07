@@ -2,6 +2,7 @@ from typing import Annotated
 
 from fastapi import Depends
 
+from aceso.gym.application.apply_routine import ApplyRoutine
 from aceso.gym.application.exercises import ExerciseService
 from aceso.gym.application.routines import RoutineService
 from aceso.gym.application.sessions import WorkoutSessionService
@@ -34,3 +35,12 @@ def get_workout_session_service(session: SessionDep) -> WorkoutSessionService:
 
 
 WorkoutSessionServiceDep = Annotated[WorkoutSessionService, Depends(get_workout_session_service)]
+
+
+def get_apply_routine(session: SessionDep) -> ApplyRoutine:
+    return ApplyRoutine(
+        SqlAlchemyRoutineRepository(session), SqlAlchemyWorkoutSessionRepository(session)
+    )
+
+
+ApplyRoutineDep = Annotated[ApplyRoutine, Depends(get_apply_routine)]
