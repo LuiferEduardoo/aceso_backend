@@ -1,21 +1,25 @@
 from datetime import date
 from typing import Annotated
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, status
 from pydantic import AwareDatetime
 
-from aceso.health.api.deps import HealthRepositoryDep
+from aceso.health.api.deps import GarminProviderDep, HealthRepositoryDep
 from aceso.health.api.schemas import (
     DailySummaryRead,
+    GarminConnectRequest,
     HealthIngestRequest,
     HealthSampleRead,
     IngestResultRead,
     SleepSessionRead,
 )
 from aceso.health.application.ingest import IngestHealthData
+from aceso.health.application.providers import ConnectHealthProvider, SyncHealthProvider
 from aceso.health.application.queries import HealthQueries
 from aceso.health.domain.entities import HealthSource, SampleMetric
 from aceso.identity.api.deps import CurrentUserIdDep
+from aceso.shared.api.deps import CredentialStoreDep
+from aceso.shared.domain.credentials import IntegrationProvider
 
 router = APIRouter(prefix="/health", tags=["health"])
 
@@ -67,3 +71,40 @@ async def list_sleep_sessions(
 ) -> list[SleepSessionRead]:
     items = await HealthQueries(repository).sleep_sessions(user_id, start, end, source)
     return [SleepSessionRead.model_validate(i) for i in items]
+
+
+@router.post("/garmin/connect", status_code=status.HTTP_204_NO_CONTENT)
+async def connect_garmin(
+    payload: GarminConnectRequest,
+    user_id: CurrentUserIdDep,
+    provider: GarminProviderDep,
+    credentials: CredentialStoreDep,
+) -> None:
+    """Log in to Garmin Connect once and store the session tokens (encrypted)."""
+    await ConnectHealthProvider(provider, credentials, IntegrationProvider.GARMIN).execute(
+        user_id, payload.email, payload.password.get_secret_value()
+    )
+
+
+@router.delete("/garmin/connect", status_code=status.HTTP_204_NO_CONTENT)
+async def disconnect_garmin(user_id: CurrentUserIdDep, credentials: CredentialStoreDep) -> None:
+    await credentials.delete(user_id, IntegrationProvider.GARMIN)
+
+
+@router.post("/garmin/sync")
+async def sync_garmin(
+    start: FromDate,
+    end: ToDate,
+    user_id: CurrentUserIdDep,
+    provider: GarminProviderDep,
+    credentials: CredentialStoreDep,
+    repository: HealthRepositoryDep,
+) -> IngestResultRead:
+    use_case = SyncHealthProvider(
+        provider,
+        credentials,
+        IngestHealthData(repository),
+        IntegrationProvider.GARMIN,
+        HealthSource.GARMIN,
+    )
+    return IngestResultRead.model_validate(await use_case.execute(user_id, start, end))

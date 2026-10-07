@@ -1,7 +1,9 @@
 from datetime import date, datetime
+from typing import Any
 
 from aceso.health.domain.entities import (
     DailySummary,
+    HealthBatch,
     HealthSample,
     HealthSource,
     SampleMetric,
@@ -61,3 +63,14 @@ class FakeHealthRepository:
             for s in self.sleeps.values()
             if s.user_id == user_id and start <= s.start_at < end and source in (None, s.source)
         ]
+
+
+class FakeProvider:
+    async def connect(self, email: str, password: str) -> dict[str, Any]:
+        return {"tokens": f"session-for-{email}"}
+
+    async def fetch(
+        self, credentials: dict[str, Any], start: date, end: date
+    ) -> tuple[HealthBatch, dict[str, Any]]:
+        batch = HealthBatch(daily_summaries=[DailySummary(day=start, steps=9876)])
+        return batch, credentials

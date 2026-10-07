@@ -21,6 +21,7 @@ os.environ["UPLOAD_DIR"] = tempfile.mkdtemp(prefix="aceso-test-uploads-")
 os.environ["STRAVA_CLIENT_ID"] = "test-client-id"
 os.environ["STRAVA_CLIENT_SECRET"] = "test-client-secret"
 
+from fastapi import FastAPI  # noqa: E402
 from httpx import ASGITransport, AsyncClient  # noqa: E402
 from sqlalchemy import text  # noqa: E402
 from sqlalchemy.ext.asyncio import (  # noqa: E402
@@ -57,7 +58,7 @@ async def sessionmaker(engine: AsyncEngine) -> AsyncIterator[async_sessionmaker[
 
 
 @pytest.fixture
-async def client(sessionmaker: async_sessionmaker[AsyncSession]) -> AsyncIterator[AsyncClient]:
+def app(sessionmaker: async_sessionmaker[AsyncSession]) -> FastAPI:
     app = create_app()
 
     async def _get_session() -> AsyncIterator[AsyncSession]:
@@ -70,6 +71,11 @@ async def client(sessionmaker: async_sessionmaker[AsyncSession]) -> AsyncIterato
                 raise
 
     app.dependency_overrides[get_session] = _get_session
+    return app
+
+
+@pytest.fixture
+async def client(app: FastAPI) -> AsyncIterator[AsyncClient]:
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         yield client
 

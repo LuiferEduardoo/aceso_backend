@@ -1,6 +1,9 @@
+from fastapi import FastAPI
 from httpx import AsyncClient
 
+from aceso.health.api.deps import get_garmin_provider
 from tests.conftest import register_and_login
+from tests.health.fakes import FakeProvider
 
 PAYLOAD = {
     "source": "health_connect",
@@ -104,3 +107,34 @@ async def test_health_data_is_isolated_between_users(auth_client: AsyncClient) -
         "/health/summaries", params={"from": "2026-10-01", "to": "2026-10-07"}, headers=other
     )
     assert response.json() == []
+
+
+async def test_garmin_connect_and_sync(app: FastAPI, auth_client: AsyncClient) -> None:
+    app.dependency_overrides[get_garmin_provider] = FakeProvider
+
+    response = await auth_client.post(
+        "/health/garmin/sync", params={"from": "2026-10-06", "to": "2026-10-06"}
+    )
+    assert response.status_code == 404
+
+    response = await auth_client.post(
+        "/health/garmin/connect", json={"email": "me@garmin.com", "password": "secret"}
+    )
+    assert response.status_code == 204
+
+    response = await auth_client.post(
+        "/health/garmin/sync", params={"from": "2026-10-06", "to": "2026-10-06"}
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["daily_summaries"] == 1
+
+    response = await auth_client.get(
+        "/health/summaries", params={"from": "2026-10-06", "to": "2026-10-06", "source": "garmin"}
+    )
+    assert response.json()[0]["steps"] == 9876
+
+    assert (await auth_client.delete("/health/garmin/connect")).status_code == 204
+    response = await auth_client.post(
+        "/health/garmin/sync", params={"from": "2026-10-06", "to": "2026-10-06"}
+    )
+    assert response.status_code == 404

@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from typing import Self
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, SecretStr, model_validator
 
 from aceso.health.domain.entities import (
     DailySummary,
@@ -100,3 +100,8 @@ class SleepSessionRead(BaseModel):
     awake_s: int | None
     score: int | None
     source: HealthSource
+
+
+class GarminConnectRequest(BaseModel):
+    email: str = Field(min_length=3)
+    password: SecretStr = Field(description="Used once to log in; never stored")
