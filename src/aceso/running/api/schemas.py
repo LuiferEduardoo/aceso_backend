@@ -24,6 +24,9 @@ class PlannedRunUpdate(BaseModel):
     target_duration_s: int | None = Field(default=None, gt=0)
     target_pace_s_per_km: int | None = Field(default=None, gt=0)
     description: str | None = None
+    completed_activity_id: int | None = Field(
+        default=None, ge=1, description="Link the activity that fulfilled this run (null unlinks)"
+    )
 
 
 class PlannedRunRead(BaseModel):
@@ -37,6 +40,7 @@ class PlannedRunRead(BaseModel):
     target_duration_s: int | None
     target_pace_s_per_km: int | None
     description: str | None
+    completed_activity_id: int | None
 
 
 class TrainingPlanCreate(BaseModel):

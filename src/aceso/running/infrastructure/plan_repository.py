@@ -12,6 +12,7 @@ _RUN_FIELDS = (
     "target_duration_s",
     "target_pace_s_per_km",
     "description",
+    "completed_activity_id",
 )
 
 

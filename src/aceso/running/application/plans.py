@@ -2,7 +2,7 @@ from datetime import date
 from typing import Any
 
 from aceso.running.domain.entities import PlannedRun, TrainingPlan
-from aceso.running.domain.ports import TrainingPlanRepository
+from aceso.running.domain.ports import ActivityRepository, TrainingPlanRepository
 from aceso.shared.domain.errors import InvalidOperationError, NotFoundError
 
 PLAN_FIELDS = {"name", "goal", "start_date", "end_date"}
@@ -13,6 +13,7 @@ RUN_FIELDS = {
     "target_duration_s",
     "target_pace_s_per_km",
     "description",
+    "completed_activity_id",
 }
 MAX_RANGE_DAYS = 366
 
@@ -30,8 +31,11 @@ def _validate_run_date(plan: TrainingPlan, run: PlannedRun) -> None:
 
 
 class TrainingPlanService:
-    def __init__(self, plans: TrainingPlanRepository) -> None:
+    def __init__(
+        self, plans: TrainingPlanRepository, activities: ActivityRepository | None = None
+    ) -> None:
         self._plans = plans
+        self._activities = activities
 
     async def create(self, plan: TrainingPlan) -> TrainingPlan:
         _validate_plan(plan)
@@ -79,6 +83,9 @@ class TrainingPlanService:
 
     async def update_run(self, user_id: int, run_id: int, changes: dict[str, Any]) -> PlannedRun:
         run = await self.get_run(user_id, run_id)
+        activity_id = changes.get("completed_activity_id")
+        if activity_id is not None:
+            await self._ensure_activity_owned(user_id, activity_id)
         for name, value in changes.items():
             if name in RUN_FIELDS:
                 setattr(run, name, value)
@@ -88,3 +95,9 @@ class TrainingPlanService:
 
     async def delete_run(self, user_id: int, run_id: int) -> None:
         await self._plans.delete_run(await self.get_run(user_id, run_id))
+
+    async def _ensure_activity_owned(self, user_id: int, activity_id: int) -> None:
+        if self._activities is None:
+            raise RuntimeError("TrainingPlanService needs an ActivityRepository to link activities")
+        if await self._activities.get(user_id, activity_id) is None:
+            raise NotFoundError("Activity not found")

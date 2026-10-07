@@ -13,7 +13,9 @@ from aceso.shared.api.deps import SessionDep, SettingsDep
 
 
 def get_training_plan_service(session: SessionDep) -> TrainingPlanService:
-    return TrainingPlanService(SqlAlchemyTrainingPlanRepository(session))
+    return TrainingPlanService(
+        SqlAlchemyTrainingPlanRepository(session), SqlAlchemyActivityRepository(session)
+    )
 
 
 TrainingPlanServiceDep = Annotated[TrainingPlanService, Depends(get_training_plan_service)]

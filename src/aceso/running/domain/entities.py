@@ -21,6 +21,7 @@ class PlannedRun:
     target_duration_s: int | None = None
     target_pace_s_per_km: int | None = None
     description: str | None = None
+    completed_activity_id: int | None = None
     plan_id: int | None = None
     id: int | None = None
 

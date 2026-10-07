@@ -56,6 +56,9 @@ class PlannedRunModel(IdMixin, TimestampMixin, Base):
     target_duration_s: Mapped[int | None] = mapped_column(Integer)
     target_pace_s_per_km: Mapped[int | None] = mapped_column(Integer)
     description: Mapped[str | None] = mapped_column(Text)
+    completed_activity_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("activities.id", ondelete="SET NULL"), index=True
+    )
 
     __table_args__ = (
         Index("ix_planned_runs_plan_id_scheduled_date", "plan_id", "scheduled_date"),

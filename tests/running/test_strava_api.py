@@ -57,3 +57,44 @@ async def test_strava_callback_rejects_forged_state(auth_client: AsyncClient) ->
         "/running/strava/callback", params={"error": "access_denied", "state": "x"}
     )
     assert response.status_code == 422
+
+
+async def test_link_planned_run_with_synced_activity(
+    app: FastAPI, auth_client: AsyncClient
+) -> None:
+    api = FakeStravaApi([strava_activity(1, day=7)])
+    app.dependency_overrides[get_strava_gateway] = lambda: StravaClient(
+        "cid", "secret", "http://test/cb", transport=api.transport()
+    )
+    url = (await auth_client.get("/running/strava/authorize")).json()["authorization_url"]
+    state = parse_qs(urlparse(url).query)["state"][0]
+    await auth_client.get("/running/strava/callback", params={"code": "abc", "state": state})
+    await auth_client.post("/running/strava/sync")
+    activity = (
+        await auth_client.get(
+            "/running/activities", params={"from": "2026-10-07", "to": "2026-10-07"}
+        )
+    ).json()[0]
+
+    plan = (
+        await auth_client.post(
+            "/running/plans",
+            json={
+                "name": "10K",
+                "start_date": "2026-10-01",
+                "end_date": "2026-10-31",
+                "runs": [{"scheduled_date": "2026-10-07", "target_distance_m": 10000}],
+            },
+        )
+    ).json()
+    run_url = f"/running/planned-runs/{plan['runs'][0]['id']}"
+
+    response = await auth_client.patch(run_url, json={"completed_activity_id": activity["id"]})
+    assert response.status_code == 200, response.text
+    assert response.json()["completed_activity_id"] == activity["id"]
+
+    response = await auth_client.patch(run_url, json={"completed_activity_id": 999999})
+    assert response.status_code == 404
+
+    response = await auth_client.patch(run_url, json={"completed_activity_id": None})
+    assert response.json()["completed_activity_id"] is None
