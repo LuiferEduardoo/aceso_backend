@@ -19,8 +19,8 @@ class ExerciseService:
     async def create(self, exercise: Exercise) -> Exercise:
         return await self._exercises.add(exercise)
 
-    async def list(self, user_id: int) -> list[Exercise]:
-        return await self._exercises.list(user_id)
+    async def list_all(self, user_id: int) -> list[Exercise]:
+        return await self._exercises.list_all(user_id)
 
     async def get(self, user_id: int, exercise_id: int) -> Exercise:
         exercise = await self._exercises.get(user_id, exercise_id)

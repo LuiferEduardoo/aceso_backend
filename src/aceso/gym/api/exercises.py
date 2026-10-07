@@ -26,7 +26,7 @@ async def create_exercise(
 async def list_exercises(
     user_id: CurrentUserIdDep, service: ExerciseServiceDep
 ) -> list[ExerciseRead]:
-    return [ExerciseRead.from_entity(e) for e in await service.list(user_id)]
+    return [ExerciseRead.from_entity(e) for e in await service.list_all(user_id)]
 
 
 @router.get("/{exercise_id}")

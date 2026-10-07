@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 
 from aceso.gym.api.exercises import router as gym_exercises_router
+from aceso.gym.api.routines import router as gym_routines_router
 from aceso.identity.api.router import router as auth_router
 from aceso.shared.api.errors import register_error_handlers
 
@@ -10,6 +11,7 @@ def create_app() -> FastAPI:
     register_error_handlers(app)
     app.include_router(auth_router)
     app.include_router(gym_exercises_router)
+    app.include_router(gym_routines_router)
 
     @app.get("/health", tags=["system"])
     async def health_check() -> dict[str, str]:

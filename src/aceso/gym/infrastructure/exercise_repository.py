@@ -40,7 +40,7 @@ class SqlAlchemyExerciseRepository:
         model = await self._get_model(user_id, exercise_id)
         return _to_entity(model) if model else None
 
-    async def list(self, user_id: int) -> list[Exercise]:
+    async def list_all(self, user_id: int) -> list[Exercise]:
         stmt = (
             select(ExerciseModel)
             .where(ExerciseModel.user_id == user_id)

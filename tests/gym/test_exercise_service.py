@@ -21,7 +21,7 @@ async def test_exercises_are_scoped_to_their_owner(service: ExerciseService) -> 
     assert created.id is not None
     with pytest.raises(NotFoundError):
         await service.get(2, created.id)
-    assert await service.list(2) == []
+    assert await service.list_all(2) == []
 
 
 async def test_update_only_touches_allowed_fields(service: ExerciseService) -> None:
