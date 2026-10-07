@@ -1,5 +1,6 @@
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -15,7 +16,13 @@ class Settings(BaseSettings):
 
     fernet_key: str = ""
 
+    storage_backend: Literal["local", "s3"] = "local"
     upload_dir: Path = Path("uploads")
+    s3_endpoint_url: str = ""
+    s3_access_key_id: str = ""
+    s3_secret_access_key: str = ""
+    s3_bucket: str = ""
+    s3_region: str = "auto"
     max_upload_bytes: int = 5 * 1024 * 1024
 
     strava_client_id: str = ""

@@ -17,6 +17,7 @@ class _TestSettings(BaseSettings):
 os.environ["DATABASE_URL"] = _TestSettings().test_database_url
 os.environ["JWT_SECRET"] = "test-secret-not-for-production-0123456789"
 os.environ["FERNET_KEY"] = Fernet.generate_key().decode()
+os.environ["STORAGE_BACKEND"] = "local"
 os.environ["UPLOAD_DIR"] = tempfile.mkdtemp(prefix="aceso-test-uploads-")
 os.environ["STRAVA_CLIENT_ID"] = "test-client-id"
 os.environ["STRAVA_CLIENT_SECRET"] = "test-client-secret"
