@@ -6,6 +6,9 @@ from pwdlib import PasswordHash
 
 from aceso.shared.domain.errors import AuthenticationError
 
+# Tolerate small clock differences (PyJWT rejects tokens whose `iat` is in the future).
+CLOCK_LEEWAY = timedelta(seconds=10)
+
 
 class Argon2PasswordHasher:
     def __init__(self) -> None:
@@ -38,7 +41,9 @@ class JwtService:
     def decode(self, token: str, purpose: str) -> int:
         """Return the subject id or raise AuthenticationError."""
         try:
-            payload = jwt.decode(token, self._secret, algorithms=[self._algorithm])
+            payload = jwt.decode(
+                token, self._secret, algorithms=[self._algorithm], leeway=CLOCK_LEEWAY
+            )
         except jwt.InvalidTokenError as exc:
             raise AuthenticationError("Invalid or expired token") from exc
         if payload.get("purpose") != purpose or not str(payload.get("sub", "")).isdigit():
