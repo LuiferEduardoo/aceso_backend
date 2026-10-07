@@ -64,3 +64,34 @@ class TrainingPlanRead(BaseModel):
     end_date: date
     runs: list[PlannedRunRead]
     created_at: datetime
+
+
+class ActivityRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    source: str
+    external_id: str
+    sport_type: str
+    name: str | None
+    start_at: datetime
+    distance_m: float | None
+    moving_time_s: int | None
+    elapsed_time_s: int | None
+    elevation_gain_m: float | None
+    avg_hr: float | None
+    max_hr: float | None
+    avg_speed: float | None
+    calories: float | None
+
+
+class AuthorizationUrl(BaseModel):
+    authorization_url: str
+
+
+class StravaConnected(BaseModel):
+    status: str = "connected"
+
+
+class SyncResult(BaseModel):
+    synced: int

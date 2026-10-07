@@ -1,7 +1,7 @@
-from datetime import date
+from datetime import date, datetime
 from typing import Protocol
 
-from aceso.running.domain.entities import PlannedRun, TrainingPlan
+from aceso.running.domain.entities import Activity, OAuthTokens, PlannedRun, TrainingPlan
 
 
 class TrainingPlanRepository(Protocol):
@@ -26,3 +26,33 @@ class TrainingPlanRepository(Protocol):
     async def update_run(self, run: PlannedRun) -> PlannedRun: ...
 
     async def delete_run(self, run: PlannedRun) -> None: ...
+
+
+class ActivityRepository(Protocol):
+    async def upsert_many(self, activities: list[Activity]) -> int:
+        """Insert or update by (user, source, external_id); returns rows written."""
+        ...
+
+    async def get(self, user_id: int, activity_id: int) -> Activity | None: ...
+
+    async def list_range(self, user_id: int, start: datetime, end: datetime) -> list[Activity]: ...
+
+
+class StravaGateway(Protocol):
+    def authorization_url(self, state: str) -> str: ...
+
+    async def exchange_code(self, code: str) -> OAuthTokens: ...
+
+    async def refresh(self, refresh_token: str) -> OAuthTokens: ...
+
+    async def list_activities(
+        self, access_token: str, *, after: datetime | None, page: int, per_page: int
+    ) -> list[Activity]: ...
+
+
+class OAuthStateSigner(Protocol):
+    """Binds an OAuth `state` to a user so the unauthenticated callback knows who it is."""
+
+    def issue(self, user_id: int) -> str: ...
+
+    def verify(self, state: str) -> int: ...
