@@ -72,3 +72,19 @@ async def client(sessionmaker: async_sessionmaker[AsyncSession]) -> AsyncIterato
     app.dependency_overrides[get_session] = _get_session
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         yield client
+
+
+async def register_and_login(client: AsyncClient, email: str) -> dict[str, str]:
+    """Create a user and return the Authorization header for it."""
+    password = "s3cret-password"
+    response = await client.post("/auth/register", json={"email": email, "password": password})
+    assert response.status_code == 201, response.text
+    response = await client.post("/auth/login", data={"username": email, "password": password})
+    assert response.status_code == 200, response.text
+    return {"Authorization": f"Bearer {response.json()['access_token']}"}
+
+
+@pytest.fixture
+async def auth_client(client: AsyncClient) -> AsyncClient:
+    client.headers.update(await register_and_login(client, "athlete@example.com"))
+    return client

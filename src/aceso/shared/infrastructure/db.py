@@ -27,7 +27,9 @@ class Base(DeclarativeBase):
 
 
 class IdMixin:
-    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    id: Mapped[int] = mapped_column(
+        BigInteger, Identity(always=True), primary_key=True, sort_order=-10
+    )
 
 
 class TimestampMixin:
