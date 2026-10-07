@@ -1,6 +1,13 @@
+from datetime import date
 from typing import Protocol
 
-from aceso.gym.domain.entities import Exercise, Routine
+from aceso.gym.domain.entities import (
+    Exercise,
+    ExerciseSet,
+    Routine,
+    SessionExercise,
+    WorkoutSession,
+)
 
 
 class ExerciseRepository(Protocol):
@@ -27,3 +34,37 @@ class RoutineRepository(Protocol):
         ...
 
     async def delete(self, routine: Routine) -> None: ...
+
+
+class WorkoutSessionRepository(Protocol):
+    async def add(self, session: WorkoutSession) -> WorkoutSession:
+        """Insert the session with its nested exercises, sets and intervals."""
+        ...
+
+    async def get(self, user_id: int, session_id: int) -> WorkoutSession | None: ...
+
+    async def list_range(self, user_id: int, start: date, end: date) -> list[WorkoutSession]: ...
+
+    async def update(self, session: WorkoutSession) -> WorkoutSession:
+        """Persist the session's own fields (not its exercises)."""
+        ...
+
+    async def delete(self, session: WorkoutSession) -> None: ...
+
+    async def add_exercise(self, session_id: int, item: SessionExercise) -> SessionExercise: ...
+
+    async def get_exercise(
+        self, user_id: int, session_exercise_id: int
+    ) -> SessionExercise | None: ...
+
+    async def delete_exercise(self, user_id: int, session_exercise_id: int) -> None: ...
+
+    async def add_set(self, session_exercise_id: int, exercise_set: ExerciseSet) -> ExerciseSet: ...
+
+    async def get_set(self, user_id: int, set_id: int) -> ExerciseSet | None: ...
+
+    async def update_set(self, user_id: int, exercise_set: ExerciseSet) -> ExerciseSet:
+        """Persist set fields and replace its intervals."""
+        ...
+
+    async def delete_set(self, user_id: int, set_id: int) -> None: ...
