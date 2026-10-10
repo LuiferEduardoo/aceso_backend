@@ -3,22 +3,61 @@ from datetime import date, datetime
 from enum import StrEnum
 
 
-class ExerciseCategory(StrEnum):
-    STRENGTH = "strength"
+class MuscleGroup(StrEnum):
+    CHEST = "chest"
+    BACK = "back"
+    SHOULDERS = "shoulders"
+    BICEPS = "biceps"
+    TRICEPS = "triceps"
+    FOREARMS = "forearms"
+    ABS = "abs"
+    QUADRICEPS = "quadriceps"
+    HAMSTRINGS = "hamstrings"
+    GLUTES = "glutes"
+    CALVES = "calves"
+    FULL_BODY = "full_body"
     CARDIO = "cardio"
+
+
+class Equipment(StrEnum):
+    BARBELL = "barbell"
+    DUMBBELL = "dumbbell"
+    MACHINE = "machine"
+    CABLE = "cable"
+    KETTLEBELL = "kettlebell"
     BODYWEIGHT = "bodyweight"
+    BAND = "band"
+    CARDIO_MACHINE = "cardio_machine"
     OTHER = "other"
+
+
+class ExerciseType(StrEnum):
+    COMPOUND = "compound"
+    ISOLATION = "isolation"
+    CARDIO = "cardio"
 
 
 @dataclass(slots=True)
 class Exercise:
     user_id: int
     name: str
-    category: ExerciseCategory = ExerciseCategory.STRENGTH
-    notes: str | None = None
+    muscle_group: MuscleGroup
+    equipment: Equipment
+    exercise_type: ExerciseType
+    secondary_muscles: list[MuscleGroup] = field(default_factory=list)
+    instructions: str | None = None
     photo_key: str | None = None
     id: int | None = None
     created_at: datetime | None = None
+
+    def muscle_errors(self) -> list[str]:
+        """Return why the secondary muscles are inconsistent with the primary one (if they are)."""
+        errors: list[str] = []
+        if len(set(self.secondary_muscles)) != len(self.secondary_muscles):
+            errors.append("secondary_muscles must not contain duplicates")
+        if self.muscle_group in self.secondary_muscles:
+            errors.append("secondary_muscles must not include the primary muscle_group")
+        return errors
 
 
 @dataclass(slots=True)

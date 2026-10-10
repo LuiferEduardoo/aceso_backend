@@ -4,13 +4,13 @@ import pytest
 
 from aceso.gym.application.sessions import WorkoutSessionService
 from aceso.gym.domain.entities import (
-    Exercise,
     ExerciseSet,
     SessionStatus,
     SetInterval,
     WorkoutSession,
 )
 from aceso.shared.domain.errors import InvalidOperationError, NotFoundError
+from tests.gym.factories import make_exercise
 from tests.gym.fakes import FakeExerciseRepository, FakeWorkoutSessionRepository
 
 
@@ -27,7 +27,7 @@ def service(exercises: FakeExerciseRepository) -> WorkoutSessionService:
 async def _session_with_exercise(
     service: WorkoutSessionService, exercises: FakeExerciseRepository
 ) -> int:
-    exercise = await exercises.add(Exercise(user_id=1, name="Stair climber"))
+    exercise = await exercises.add(make_exercise(1, "Stair climber"))
     session = await service.create(WorkoutSession(user_id=1, scheduled_date=date(2026, 10, 7)))
     assert exercise.id and session.id
     item = await service.add_exercise(1, session.id, exercise.id)

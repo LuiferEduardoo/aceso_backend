@@ -1,10 +1,11 @@
 from httpx import AsyncClient
 
 from tests.conftest import register_and_login
+from tests.gym.factories import exercise_payload
 
 
 async def _exercise(client: AsyncClient, name: str) -> int:
-    response = await client.post("/gym/exercises", json={"name": name})
+    response = await client.post("/gym/exercises", json=exercise_payload(name))
     assert response.status_code == 201
     return response.json()["id"]
 
@@ -46,7 +47,7 @@ async def test_routine_crud(auth_client: AsyncClient) -> None:
 async def test_routine_cannot_use_foreign_exercise(auth_client: AsyncClient) -> None:
     other = await register_and_login(auth_client, "other@example.com")
     foreign = (
-        await auth_client.post("/gym/exercises", json={"name": "Squat"}, headers=other)
+        await auth_client.post("/gym/exercises", json=exercise_payload("Squat"), headers=other)
     ).json()["id"]
     response = await auth_client.post(
         "/gym/routines", json={"name": "R", "exercises": [{"exercise_id": foreign}]}

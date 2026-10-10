@@ -1,10 +1,11 @@
 from httpx import AsyncClient
 
 from tests.conftest import register_and_login
+from tests.gym.factories import exercise_payload
 
 
 async def _exercise(client: AsyncClient, name: str) -> int:
-    return (await client.post("/gym/exercises", json={"name": name})).json()["id"]
+    return (await client.post("/gym/exercises", json=exercise_payload(name))).json()["id"]
 
 
 async def test_log_workout_with_sets_and_intervals(auth_client: AsyncClient) -> None:

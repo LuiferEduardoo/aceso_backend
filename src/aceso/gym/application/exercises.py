@@ -8,7 +8,14 @@ from aceso.shared.domain.storage import FileStorage
 
 ALLOWED_PHOTO_TYPES = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}
 MEDIA_TYPE_BY_EXTENSION = {ext: media for media, ext in ALLOWED_PHOTO_TYPES.items()}
-UPDATABLE_FIELDS = {"name", "category", "notes"}
+UPDATABLE_FIELDS = {
+    "name",
+    "muscle_group",
+    "secondary_muscles",
+    "equipment",
+    "exercise_type",
+    "instructions",
+}
 
 
 class ExerciseService:
@@ -17,6 +24,7 @@ class ExerciseService:
         self._storage = storage
 
     async def create(self, exercise: Exercise) -> Exercise:
+        _ensure_valid(exercise)
         return await self._exercises.add(exercise)
 
     async def list_all(self, user_id: int) -> list[Exercise]:
@@ -33,6 +41,7 @@ class ExerciseService:
         for field, value in changes.items():
             if field in UPDATABLE_FIELDS:
                 setattr(exercise, field, value)
+        _ensure_valid(exercise)
         return await self._exercises.update(exercise)
 
     async def delete(self, user_id: int, exercise_id: int) -> None:
@@ -81,3 +90,9 @@ class ExerciseService:
         if self._storage is None:
             raise RuntimeError("ExerciseService requires a FileStorage for photo operations")
         return self._storage
+
+
+def _ensure_valid(exercise: Exercise) -> None:
+    errors = exercise.muscle_errors()
+    if errors:
+        raise InvalidOperationError("; ".join(errors))

@@ -1,8 +1,9 @@
 import pytest
 
 from aceso.gym.application.routines import RoutineService
-from aceso.gym.domain.entities import Exercise, Routine, RoutineExercise
+from aceso.gym.domain.entities import Routine, RoutineExercise
 from aceso.shared.domain.errors import NotFoundError
+from tests.gym.factories import make_exercise
 from tests.gym.fakes import FakeExerciseRepository, FakeRoutineRepository
 
 
@@ -19,8 +20,8 @@ def service(exercises: FakeExerciseRepository) -> RoutineService:
 async def test_create_assigns_positions_in_order(
     service: RoutineService, exercises: FakeExerciseRepository
 ) -> None:
-    squat = await exercises.add(Exercise(user_id=1, name="Squat"))
-    bench = await exercises.add(Exercise(user_id=1, name="Bench"))
+    squat = await exercises.add(make_exercise(1, "Squat"))
+    bench = await exercises.add(make_exercise(1, "Bench"))
     assert squat.id and bench.id
     routine = await service.create(
         Routine(
@@ -41,7 +42,7 @@ async def test_create_assigns_positions_in_order(
 async def test_create_rejects_exercises_of_other_users(
     service: RoutineService, exercises: FakeExerciseRepository
 ) -> None:
-    foreign = await exercises.add(Exercise(user_id=2, name="Squat"))
+    foreign = await exercises.add(make_exercise(2, "Squat"))
     assert foreign.id
     with pytest.raises(NotFoundError):
         await service.create(
@@ -52,7 +53,7 @@ async def test_create_rejects_exercises_of_other_users(
 async def test_update_replaces_exercises_and_keeps_name(
     service: RoutineService, exercises: FakeExerciseRepository
 ) -> None:
-    squat = await exercises.add(Exercise(user_id=1, name="Squat"))
+    squat = await exercises.add(make_exercise(1, "Squat"))
     assert squat.id
     routine = await service.create(Routine(user_id=1, name="Legs", description="old"))
     assert routine.id

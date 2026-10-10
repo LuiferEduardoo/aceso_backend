@@ -2,7 +2,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from aceso.gym.domain.entities import Exercise, ExerciseCategory
+from aceso.gym.domain.entities import Equipment, Exercise, ExerciseType, MuscleGroup
 from aceso.gym.infrastructure.models import ExerciseModel
 from aceso.shared.domain.errors import ConflictError
 
@@ -12,8 +12,11 @@ def _to_entity(model: ExerciseModel) -> Exercise:
         id=model.id,
         user_id=model.user_id,
         name=model.name,
-        category=ExerciseCategory(model.category),
-        notes=model.notes,
+        muscle_group=MuscleGroup(model.muscle_group),
+        secondary_muscles=[MuscleGroup(m) for m in model.secondary_muscles],
+        equipment=Equipment(model.equipment),
+        exercise_type=ExerciseType(model.exercise_type),
+        instructions=model.instructions,
         photo_key=model.photo_key,
         created_at=model.created_at,
     )
@@ -27,8 +30,11 @@ class SqlAlchemyExerciseRepository:
         model = ExerciseModel(
             user_id=exercise.user_id,
             name=exercise.name,
-            category=exercise.category.value,
-            notes=exercise.notes,
+            muscle_group=MuscleGroup(exercise.muscle_group).value,
+            secondary_muscles=[MuscleGroup(m).value for m in exercise.secondary_muscles],
+            equipment=Equipment(exercise.equipment).value,
+            exercise_type=ExerciseType(exercise.exercise_type).value,
+            instructions=exercise.instructions,
             photo_key=exercise.photo_key,
         )
         self._session.add(model)
@@ -53,8 +59,11 @@ class SqlAlchemyExerciseRepository:
         model = await self._get_model(exercise.user_id, exercise.id)
         assert model is not None
         model.name = exercise.name
-        model.category = ExerciseCategory(exercise.category).value
-        model.notes = exercise.notes
+        model.muscle_group = MuscleGroup(exercise.muscle_group).value
+        model.secondary_muscles = [MuscleGroup(m).value for m in exercise.secondary_muscles]
+        model.equipment = Equipment(exercise.equipment).value
+        model.exercise_type = ExerciseType(exercise.exercise_type).value
+        model.instructions = exercise.instructions
         model.photo_key = exercise.photo_key
         await self._flush()
         return _to_entity(model)

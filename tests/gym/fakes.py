@@ -11,28 +11,32 @@ from aceso.gym.domain.entities import (
 )
 
 
+def _copy(exercise: Exercise) -> Exercise:
+    return replace(exercise, secondary_muscles=list(exercise.secondary_muscles))
+
+
 class FakeExerciseRepository:
     def __init__(self) -> None:
         self.items: dict[int, Exercise] = {}
         self._next_id = 1
 
     async def add(self, exercise: Exercise) -> Exercise:
-        exercise = replace(exercise, id=self._next_id, created_at=datetime.now(UTC))
+        exercise = replace(_copy(exercise), id=self._next_id, created_at=datetime.now(UTC))
         self.items[self._next_id] = exercise
         self._next_id += 1
-        return replace(exercise)
+        return _copy(exercise)
 
     async def get(self, user_id: int, exercise_id: int) -> Exercise | None:
         exercise = self.items.get(exercise_id)
-        return replace(exercise) if exercise and exercise.user_id == user_id else None
+        return _copy(exercise) if exercise and exercise.user_id == user_id else None
 
     async def list_all(self, user_id: int) -> list[Exercise]:
-        return [replace(e) for e in self.items.values() if e.user_id == user_id]
+        return [_copy(e) for e in self.items.values() if e.user_id == user_id]
 
     async def update(self, exercise: Exercise) -> Exercise:
         assert exercise.id is not None
-        self.items[exercise.id] = replace(exercise)
-        return replace(exercise)
+        self.items[exercise.id] = _copy(exercise)
+        return _copy(exercise)
 
     async def delete(self, exercise: Exercise) -> None:
         assert exercise.id is not None

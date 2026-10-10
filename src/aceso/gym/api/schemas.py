@@ -4,9 +4,11 @@ from typing import Self
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from aceso.gym.domain.entities import (
+    Equipment,
     Exercise,
-    ExerciseCategory,
     ExerciseSet,
+    ExerciseType,
+    MuscleGroup,
     Routine,
     RoutineExercise,
     SessionExercise,
@@ -17,22 +19,33 @@ from aceso.gym.domain.entities import (
 
 class ExerciseCreate(BaseModel):
     name: str = Field(min_length=1, max_length=100)
-    category: ExerciseCategory = ExerciseCategory.STRENGTH
-    notes: str | None = None
+    muscle_group: MuscleGroup
+    secondary_muscles: list[MuscleGroup] = Field(
+        default=[], description="Other muscles worked; unique and without the primary muscle_group."
+    )
+    equipment: Equipment
+    exercise_type: ExerciseType
+    instructions: str | None = Field(default=None, description="Technique description.")
 
 
 class ExerciseUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=100)
-    category: ExerciseCategory | None = None
-    notes: str | None = None
+    muscle_group: MuscleGroup | None = None
+    secondary_muscles: list[MuscleGroup] | None = None
+    equipment: Equipment | None = None
+    exercise_type: ExerciseType | None = None
+    instructions: str | None = None
 
 
 class ExerciseRead(BaseModel):
     id: int
     name: str
-    category: ExerciseCategory
-    notes: str | None
-    photo_url: str | None
+    muscle_group: MuscleGroup
+    secondary_muscles: list[MuscleGroup]
+    equipment: Equipment
+    exercise_type: ExerciseType
+    instructions: str | None
+    image_url: str | None
     created_at: datetime
 
     @classmethod
@@ -41,9 +54,12 @@ class ExerciseRead(BaseModel):
         return cls(
             id=exercise.id,
             name=exercise.name,
-            category=exercise.category,
-            notes=exercise.notes,
-            photo_url=f"/gym/exercises/{exercise.id}/photo" if exercise.photo_key else None,
+            muscle_group=exercise.muscle_group,
+            secondary_muscles=list(exercise.secondary_muscles),
+            equipment=exercise.equipment,
+            exercise_type=exercise.exercise_type,
+            instructions=exercise.instructions,
+            image_url=f"/gym/exercises/{exercise.id}/photo" if exercise.photo_key else None,
             created_at=exercise.created_at,
         )
 

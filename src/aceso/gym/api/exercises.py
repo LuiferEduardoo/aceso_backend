@@ -13,6 +13,8 @@ router = APIRouter(prefix="/gym/exercises", tags=["gym"])
 
 ExerciseId = Annotated[int, Path(ge=1)]
 
+NON_NULLABLE_FIELDS = ("name", "muscle_group", "secondary_muscles", "equipment", "exercise_type")
+
 
 @router.post("", status_code=status.HTTP_201_CREATED)
 async def create_exercise(
@@ -44,10 +46,9 @@ async def update_exercise(
     service: ExerciseServiceDep,
 ) -> ExerciseRead:
     changes = payload.model_dump(exclude_unset=True)
-    if "name" in changes and changes["name"] is None:
-        raise InvalidOperationError("name cannot be null")
-    if "category" in changes and changes["category"] is None:
-        raise InvalidOperationError("category cannot be null")
+    for field in NON_NULLABLE_FIELDS:
+        if field in changes and changes[field] is None:
+            raise InvalidOperationError(f"{field} cannot be null")
     return ExerciseRead.from_entity(await service.update(user_id, exercise_id, changes))
 
 

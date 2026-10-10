@@ -1,4 +1,5 @@
 from datetime import date, datetime
+from enum import StrEnum
 
 from sqlalchemy import (
     BigInteger,
@@ -14,9 +15,15 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
+from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from aceso.gym.domain.entities import Equipment, ExerciseType, MuscleGroup
 from aceso.shared.infrastructure.db import Base, IdMixin, TimestampMixin
+
+
+def _sql_values(enum: type[StrEnum]) -> str:
+    return ", ".join(f"'{member.value}'" for member in enum)
 
 
 class ExerciseModel(IdMixin, TimestampMixin, Base):
@@ -26,14 +33,21 @@ class ExerciseModel(IdMixin, TimestampMixin, Base):
         BigInteger, ForeignKey("users.id", ondelete="CASCADE"), index=True
     )
     name: Mapped[str] = mapped_column(Text)
-    category: Mapped[str] = mapped_column(Text, server_default="strength")
-    notes: Mapped[str | None] = mapped_column(Text)
+    muscle_group: Mapped[str] = mapped_column(Text)
+    secondary_muscles: Mapped[list[str]] = mapped_column(ARRAY(Text), server_default="{}")
+    equipment: Mapped[str] = mapped_column(Text)
+    exercise_type: Mapped[str] = mapped_column(Text)
+    instructions: Mapped[str | None] = mapped_column(Text)
     photo_key: Mapped[str | None] = mapped_column(Text)
 
     __table_args__ = (
+        CheckConstraint(f"muscle_group IN ({_sql_values(MuscleGroup)})", name="muscle_group"),
         CheckConstraint(
-            "category IN ('strength', 'cardio', 'bodyweight', 'other')", name="category"
+            f"secondary_muscles <@ ARRAY[{_sql_values(MuscleGroup)}]::text[]",
+            name="secondary_muscles",
         ),
+        CheckConstraint(f"equipment IN ({_sql_values(Equipment)})", name="equipment"),
+        CheckConstraint(f"exercise_type IN ({_sql_values(ExerciseType)})", name="exercise_type"),
         CheckConstraint("length(name) BETWEEN 1 AND 100", name="name_length"),
         Index("uq_exercises_user_id_name_lower", "user_id", func.lower(name), unique=True),
     )
