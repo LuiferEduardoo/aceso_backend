@@ -6,10 +6,12 @@ from aceso.identity.api.deps import JwtServiceDep
 from aceso.running.application.plans import TrainingPlanService
 from aceso.running.domain.ports import ActivityRepository, OAuthStateSigner, StravaGateway
 from aceso.running.infrastructure.activity_repository import SqlAlchemyActivityRepository
-from aceso.running.infrastructure.oauth_state import JwtOAuthStateSigner
 from aceso.running.infrastructure.plan_repository import SqlAlchemyTrainingPlanRepository
 from aceso.running.infrastructure.strava import StravaClient
 from aceso.shared.api.deps import SessionDep, SettingsDep
+from aceso.shared.infrastructure.oauth_state import JwtOAuthStateSigner
+
+STRAVA_STATE_PURPOSE = "strava_oauth_state"
 
 
 def get_training_plan_service(session: SessionDep) -> TrainingPlanService:
@@ -31,7 +33,7 @@ StravaGatewayDep = Annotated[StravaGateway, Depends(get_strava_gateway)]
 
 
 def get_oauth_state_signer(jwt_service: JwtServiceDep) -> OAuthStateSigner:
-    return JwtOAuthStateSigner(jwt_service)
+    return JwtOAuthStateSigner(jwt_service, STRAVA_STATE_PURPOSE)
 
 
 OAuthStateSignerDep = Annotated[OAuthStateSigner, Depends(get_oauth_state_signer)]
