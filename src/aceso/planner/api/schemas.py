@@ -175,3 +175,32 @@ class AgendaDayRead(BaseModel):
     events: list[CalendarEventRead]
     tasks: list[TaskRead]
     habits: list[AgendaHabitRead]
+
+
+class AuthorizationUrl(BaseModel):
+    authorization_url: str
+
+
+class GoogleConnected(BaseModel):
+    status: str = "connected"
+
+
+class GoogleCalendarRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    summary: str
+    primary: bool
+    access_role: str
+    writable: bool
+
+
+class GoogleCalendarSelect(BaseModel):
+    calendar_id: str = Field(min_length=1)
+
+
+class GoogleCalendarLinkRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    calendar_id: str
+    last_synced_at: datetime | None

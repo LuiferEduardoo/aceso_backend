@@ -1,7 +1,16 @@
 from datetime import date, datetime
 from typing import Protocol
 
-from aceso.planner.domain.entities import CalendarEvent, Habit, HabitLog, Task, TaskStatus
+from aceso.planner.domain.entities import (
+    CalendarEvent,
+    GoogleCalendar,
+    GoogleCalendarLink,
+    Habit,
+    HabitLog,
+    OAuthTokens,
+    Task,
+    TaskStatus,
+)
 
 
 class HabitRepository(Protocol):
@@ -74,3 +83,35 @@ class CalendarEventRepository(Protocol):
     async def delete(self, event: CalendarEvent) -> None:
         """Remove the row for good."""
         ...
+
+    async def reset_sync(self, user_id: int) -> None:
+        """Forget Google state: drop Google-sourced events and tombstones, re-queue the rest."""
+        ...
+
+
+class GoogleCalendarLinkRepository(Protocol):
+    async def get(self, user_id: int) -> GoogleCalendarLink | None: ...
+
+    async def save(self, link: GoogleCalendarLink) -> GoogleCalendarLink:
+        """Insert or update the user's single link."""
+        ...
+
+    async def delete(self, user_id: int) -> None: ...
+
+
+class GoogleCalendarGateway(Protocol):
+    def authorization_url(self, state: str) -> str: ...
+
+    async def exchange_code(self, code: str) -> OAuthTokens: ...
+
+    async def refresh(self, refresh_token: str) -> OAuthTokens: ...
+
+    async def list_calendars(self, access_token: str) -> list[GoogleCalendar]: ...
+
+
+class OAuthStateSigner(Protocol):
+    """Binds an OAuth `state` to a user so the unauthenticated callback knows who it is."""
+
+    def issue(self, user_id: int) -> str: ...
+
+    def verify(self, state: str) -> int: ...

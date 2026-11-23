@@ -1,7 +1,18 @@
 from copy import deepcopy
 from datetime import UTC, date, datetime
+from typing import Any
 
-from aceso.planner.domain.entities import CalendarEvent, Habit, HabitLog, Task, TaskStatus
+from aceso.planner.domain.entities import (
+    CalendarEvent,
+    EventSource,
+    GoogleCalendarLink,
+    Habit,
+    HabitLog,
+    Task,
+    TaskStatus,
+)
+from aceso.shared.domain.credentials import IntegrationProvider
+from aceso.shared.domain.errors import AuthenticationError
 
 
 class FakeHabitRepository:
@@ -184,3 +195,55 @@ class FakeCalendarEventRepository:
     async def delete(self, event: CalendarEvent) -> None:
         assert event.id is not None
         self.events.pop(event.id, None)
+
+    async def reset_sync(self, user_id: int) -> None:
+        for event_id, event in list(self.events.items()):
+            if event.user_id != user_id:
+                continue
+            if event.source == EventSource.GOOGLE or event.deleted_at is not None:
+                del self.events[event_id]
+                continue
+            event.google_event_id = event.etag = event.remote_updated_at = None
+            event.sync_pending = True
+
+
+class FakeGoogleCalendarLinkRepository:
+    def __init__(self) -> None:
+        self.links: dict[int, GoogleCalendarLink] = {}
+
+    async def get(self, user_id: int) -> GoogleCalendarLink | None:
+        link = self.links.get(user_id)
+        return deepcopy(link) if link else None
+
+    async def save(self, link: GoogleCalendarLink) -> GoogleCalendarLink:
+        self.links[link.user_id] = deepcopy(link)
+        return deepcopy(link)
+
+    async def delete(self, user_id: int) -> None:
+        self.links.pop(user_id, None)
+
+
+class FakeCredentialStore:
+    def __init__(self) -> None:
+        self.data: dict[tuple[int, IntegrationProvider], dict[str, Any]] = {}
+
+    async def get(self, user_id: int, provider: IntegrationProvider) -> dict[str, Any] | None:
+        return self.data.get((user_id, provider))
+
+    async def save(
+        self, user_id: int, provider: IntegrationProvider, payload: dict[str, Any]
+    ) -> None:
+        self.data[(user_id, provider)] = payload
+
+    async def delete(self, user_id: int, provider: IntegrationProvider) -> None:
+        self.data.pop((user_id, provider), None)
+
+
+class FakeStates:
+    def issue(self, user_id: int) -> str:
+        return f"state-{user_id}"
+
+    def verify(self, state: str) -> int:
+        if not state.startswith("state-"):
+            raise AuthenticationError("Invalid state")
+        return int(state.removeprefix("state-"))

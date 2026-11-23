@@ -178,3 +178,20 @@ class CalendarEventModel(IdMixin, TimestampMixin, Base):
         CheckConstraint(f"source IN ({_sql_values(EventSource)})", name="source"),
         CheckConstraint("end_at > start_at", name="end_after_start"),
     )
+
+
+class GoogleCalendarLinkModel(IdMixin, TimestampMixin, Base):
+    __tablename__ = "google_calendar_links"
+
+    # The unique constraint's index also serves the foreign key.
+    user_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="CASCADE"), unique=True
+    )
+    calendar_id: Mapped[str] = mapped_column(Text, server_default="primary")
+    sync_token: Mapped[str | None] = mapped_column(Text)
+    last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), sort_order=11
+    )
+
+    __table_args__ = (CheckConstraint("length(calendar_id) >= 1", name="calendar_id"),)

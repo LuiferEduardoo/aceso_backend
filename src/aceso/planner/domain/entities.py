@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 from enum import StrEnum
+from typing import Any
 
 
 class HabitFrequency(StrEnum):
@@ -123,3 +124,53 @@ class CalendarEvent:
 
     def overlaps(self, start: datetime, end: datetime) -> bool:
         return self.start_at < end and self.end_at > start
+
+
+@dataclass(slots=True, frozen=True)
+class OAuthTokens:
+    """Google OAuth tokens. A refresh response may omit `refresh_token` (None)."""
+
+    access_token: str
+    expires_at: datetime
+    refresh_token: str | None = None
+
+    def expires_within(self, now: datetime, margin: timedelta) -> bool:
+        return self.expires_at <= now + margin
+
+    def to_payload(self) -> dict[str, Any]:
+        return {
+            "access_token": self.access_token,
+            "refresh_token": self.refresh_token,
+            "expires_at": self.expires_at.isoformat(),
+        }
+
+    @classmethod
+    def from_payload(cls, payload: dict[str, Any]) -> "OAuthTokens":
+        return cls(
+            access_token=payload["access_token"],
+            refresh_token=payload.get("refresh_token"),
+            expires_at=datetime.fromisoformat(payload["expires_at"]),
+        )
+
+
+@dataclass(slots=True, frozen=True)
+class GoogleCalendar:
+    id: str
+    summary: str
+    primary: bool = False
+    access_role: str = "reader"
+
+    @property
+    def writable(self) -> bool:
+        return self.access_role in ("owner", "writer")
+
+
+@dataclass(slots=True)
+class GoogleCalendarLink:
+    """Which Google calendar a user syncs with and where the incremental sync left off."""
+
+    user_id: int
+    calendar_id: str = "primary"
+    sync_token: str | None = None
+    last_synced_at: datetime | None = None
+    id: int | None = None
