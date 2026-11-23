@@ -1,4 +1,5 @@
 from datetime import UTC, date, datetime, time
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -88,3 +89,20 @@ async def test_archived_habits_cannot_be_logged(repo: FakeHabitRepository) -> No
     await service.archive(1, habit.id)
     with pytest.raises(InvalidOperationError):
         await HabitTracking(repo).log(1, habit.id, date(2026, 10, 8))
+
+
+async def test_stats_today_is_the_bogota_day(repo: FakeHabitRepository) -> None:
+    habit = await HabitService(repo, FakeCalendarEventRepository()).create(_habit())
+    assert habit.id is not None
+    late_evening = datetime(2026, 10, 11, 3, tzinfo=UTC)  # 2026-10-10 22:00 in Bogota
+    tracking = HabitTracking(repo, clock=lambda: late_evening)
+    for day in (8, 9, 10):
+        await tracking.log(1, habit.id, date(2026, 10, day))
+
+    stats = await tracking.stats(1, habit.id, date(2026, 10, 5), date(2026, 10, 11))
+    assert stats.current_streak == 3
+    assert stats.expected == 6  # Oct 5..10: the 11th has not started in Bogota
+
+    utc_tracking = HabitTracking(repo, clock=lambda: late_evening, tz=ZoneInfo("UTC"))
+    utc_stats = await utc_tracking.stats(1, habit.id, date(2026, 10, 5), date(2026, 10, 11))
+    assert utc_stats.expected == 7

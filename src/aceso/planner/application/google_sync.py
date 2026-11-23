@@ -3,9 +3,11 @@
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from aceso.planner.application.google import valid_google_tokens
 from aceso.planner.application.habit_calendar import habit_rrule
+from aceso.planner.application.ranges import DEFAULT_TZ
 from aceso.planner.domain.entities import (
     CalendarEvent,
     EventDraft,
@@ -61,6 +63,7 @@ class SyncGoogleCalendar:
         tasks: TaskRepository,
         habits: HabitRepository,
         clock: Callable[[], datetime] = _utcnow,
+        tz: ZoneInfo = DEFAULT_TZ,
     ) -> None:
         self._gateway = gateway
         self._credentials = credentials
@@ -69,6 +72,7 @@ class SyncGoogleCalendar:
         self._tasks = tasks
         self._habits = habits
         self._clock = clock
+        self._tz = tz
 
     async def execute(self, user_id: int) -> GoogleSyncResult:
         link = await self._links.get(user_id)
@@ -262,14 +266,16 @@ class SyncGoogleCalendar:
             "start_at": event.start_at,
             "end_at": event.end_at,
             "all_day": event.all_day,
+            # Timed events carry this zone; all-day ones become dates (days) in it.
+            "timezone": self._tz.key,
         }
         if event.habit_id is not None:
             habit = await self._habits.get(event.user_id, event.habit_id)
             if habit is not None:
+                # The RRULE expands in the habit's own zone (its time_of_day is local there).
                 return EventDraft(
-                    **common,
+                    **{**common, "timezone": habit.timezone},
                     aceso_ref=f"{HABIT_REF_PREFIX}{habit.id}",
-                    timezone=habit.timezone,
                     recurrence=[habit_rrule(habit)],
                 )
         if event.task_id is not None:

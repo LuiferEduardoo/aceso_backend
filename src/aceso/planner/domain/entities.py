@@ -3,6 +3,9 @@ from datetime import date, datetime, time, timedelta
 from enum import StrEnum
 from typing import Any
 
+# IANA zone that defines planner "calendar days" unless configured otherwise.
+DEFAULT_TIMEZONE = "America/Bogota"
+
 
 class HabitFrequency(StrEnum):
     DAILY = "daily"
@@ -25,7 +28,7 @@ class Habit:
     description: str | None = None
     time_of_day: time | None = None
     duration_min: int | None = None
-    timezone: str = "UTC"
+    timezone: str = DEFAULT_TIMEZONE
     sync_to_calendar: bool = False
     archived_at: datetime | None = None
     id: int | None = None
@@ -219,5 +222,5 @@ class EventDraft:
     all_day: bool = False
     description: str | None = None
     location: str | None = None
-    timezone: str = "UTC"
+    timezone: str = DEFAULT_TIMEZONE
     recurrence: list[str] = field(default_factory=list)

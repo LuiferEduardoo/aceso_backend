@@ -9,6 +9,7 @@ from aceso.planner.api.deps import (
     GoogleLinkRepositoryDep,
     GoogleStateSignerDep,
     HabitRepositoryDep,
+    PlannerTimezoneDep,
     TaskRepositoryDep,
 )
 from aceso.planner.api.schemas import (
@@ -92,8 +93,9 @@ async def google_sync(
     events: CalendarEventRepositoryDep,
     tasks: TaskRepositoryDep,
     habits: HabitRepositoryDep,
+    tz: PlannerTimezoneDep,
 ) -> GoogleSyncResultRead:
-    use_case = SyncGoogleCalendar(gateway, credentials, links, events, tasks, habits)
+    use_case = SyncGoogleCalendar(gateway, credentials, links, events, tasks, habits, tz=tz)
     result = await use_case.execute(user_id)
     return GoogleSyncResultRead.model_validate(result)
 

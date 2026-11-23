@@ -32,7 +32,7 @@ async def create_event(
     return CalendarEventRead.model_validate(event)
 
 
-@events_router.get("", summary="Events overlapping the UTC days from..to")
+@events_router.get("", summary="Events overlapping the local days from..to")
 async def list_events(
     start: FromDate, end: ToDate, user_id: CurrentUserIdDep, service: CalendarServiceDep
 ) -> list[CalendarEventRead]:
@@ -86,7 +86,7 @@ def _day_read(day: AgendaDay) -> AgendaDayRead:
     )
 
 
-@agenda_router.get("", summary="Per-day events, due/scheduled tasks and habits (UTC days)")
+@agenda_router.get("", summary="Per-day events, due/scheduled tasks and habits (local days)")
 async def agenda(
     start: FromDate, end: ToDate, user_id: CurrentUserIdDep, agenda: AgendaDep
 ) -> list[AgendaDayRead]:

@@ -34,6 +34,7 @@ async def test_full_then_incremental_pull(h: Harness) -> None:
     assert a.source == EventSource.GOOGLE and not a.sync_pending
     assert a.start_at == datetime(2026, 10, 12, 7, tzinfo=UTC)
     assert b.all_day and b.end_at - b.start_at == timedelta(days=1)
+    assert b.start_at == datetime(2026, 10, 13, 5, tzinfo=UTC)  # Bogota midnight
     first = h.sync_requests()[0]
     assert "timeMin" in first and "syncToken" not in first
     link = h.links.links[1]

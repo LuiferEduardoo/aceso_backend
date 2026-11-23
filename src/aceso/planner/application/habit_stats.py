@@ -5,7 +5,9 @@ from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from datetime import date, timedelta
 from enum import StrEnum
+from zoneinfo import ZoneInfo
 
+from aceso.planner.application.ranges import DEFAULT_TZ, local_day
 from aceso.planner.domain.entities import Habit, HabitFrequency, HabitLog
 
 
@@ -61,12 +63,17 @@ def _rate(completed: int, expected: int) -> float:
 
 
 def compute_stats(
-    habit: Habit, logs: Iterable[HabitLog], start: date, end: date, today: date
+    habit: Habit,
+    logs: Iterable[HabitLog],
+    start: date,
+    end: date,
+    today: date,
+    tz: ZoneInfo = DEFAULT_TZ,
 ) -> HabitStats:
     """Streaks are measured up to `today`; the completion rate covers [start, end] ∩ past."""
     last = today
     if habit.archived_at is not None:
-        last = min(last, habit.archived_at.date())
+        last = min(last, local_day(habit.archived_at, tz))
     done = {log.day for log in logs if log.meets(habit) and log.day >= habit.start_date}
     range_start, range_end = max(start, habit.start_date), min(end, last)
 

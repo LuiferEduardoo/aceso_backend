@@ -48,7 +48,7 @@ class HabitModel(IdMixin, TimestampMixin, Base):
     start_date: Mapped[date] = mapped_column(Date)
     time_of_day: Mapped[time | None] = mapped_column(Time)
     duration_min: Mapped[int | None] = mapped_column(Integer)
-    timezone: Mapped[str] = mapped_column(Text, server_default="UTC")
+    timezone: Mapped[str] = mapped_column(Text, server_default="America/Bogota")
     sync_to_calendar: Mapped[bool] = mapped_column(Boolean, server_default="false")
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(

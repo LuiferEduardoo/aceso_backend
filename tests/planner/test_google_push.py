@@ -41,7 +41,10 @@ async def test_push_insert_patch_and_delete(h: Harness) -> None:
     assert stored.google_event_id == "g1" and not stored.sync_pending
     remote = h.api.live()["g1"]
     assert remote["summary"] == "Physio" and remote["location"] == "Clinic"
-    assert remote["start"] == {"dateTime": "2026-10-12T09:00:00+00:00", "timeZone": "UTC"}
+    assert remote["start"] == {
+        "dateTime": "2026-10-12T04:00:00-05:00",
+        "timeZone": "America/Bogota",
+    }
     assert remote["extendedProperties"]["private"]["aceso_ref"] == f"event:{event.id}"
 
     await h.sync()  # our own change comes back in the delta and is recognised
@@ -62,6 +65,16 @@ async def test_all_day_event_uses_dates(h: Harness) -> None:
     await h.sync()
     remote = h.api.live()["g1"]
     assert remote["start"] == {"date": "2026-10-12"} and remote["end"] == {"date": "2026-10-13"}
+
+
+async def test_all_day_dates_are_bogota_days(h: Harness) -> None:
+    late = datetime(2026, 10, 12, 2, tzinfo=UTC)  # still the 11th in Bogota
+    await CalendarService(h.events).create(
+        _event(all_day=True, start_at=late, end_at=late + timedelta(hours=1))
+    )
+    await h.sync()
+    remote = h.api.live()["g1"]
+    assert remote["start"] == {"date": "2026-10-11"} and remote["end"] == {"date": "2026-10-12"}
 
 
 async def test_patch_of_vanished_remote_event_recreates_it(h: Harness) -> None:

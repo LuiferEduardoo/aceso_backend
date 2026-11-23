@@ -4,7 +4,13 @@ from typing import Annotated
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
 from aceso.planner.application.habit_stats import StreakUnit
-from aceso.planner.domain.entities import EventSource, HabitFrequency, TaskPriority, TaskStatus
+from aceso.planner.domain.entities import (
+    DEFAULT_TIMEZONE,
+    EventSource,
+    HabitFrequency,
+    TaskPriority,
+    TaskStatus,
+)
 
 Weekday = Annotated[int, Field(ge=0, le=6, description="0=Monday .. 6=Sunday")]
 
@@ -22,7 +28,7 @@ class HabitCreate(BaseModel):
     start_date: date
     time_of_day: time | None = None
     duration_min: int | None = Field(default=None, gt=0)
-    timezone: str = Field(default="UTC", description="IANA zone used for time_of_day")
+    timezone: str = Field(default=DEFAULT_TIMEZONE, description="IANA zone used for time_of_day")
     sync_to_calendar: bool = False
 
 
@@ -129,7 +135,10 @@ class CalendarEventCreate(BaseModel):
     location: str | None = None
     start_at: AwareDatetime
     end_at: AwareDatetime
-    all_day: bool = Field(default=False, description="Spans whole UTC days")
+    all_day: bool = Field(
+        default=False,
+        description="Spans whole calendar days in the planner timezone (America/Bogota)",
+    )
 
 
 class CalendarEventUpdate(BaseModel):

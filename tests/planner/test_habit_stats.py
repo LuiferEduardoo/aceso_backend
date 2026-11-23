@@ -1,9 +1,11 @@
 from datetime import UTC, date, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from aceso.planner.application.habit_stats import StreakUnit, compute_stats
 from aceso.planner.domain.entities import Habit, HabitFrequency, HabitLog
 
 START = date(2026, 10, 5)  # a Monday
+BOGOTA = ZoneInfo("America/Bogota")
 
 
 def _habit(**kwargs: object) -> Habit:
@@ -83,11 +85,19 @@ def test_times_per_week_counts_weeks() -> None:
 
 
 def test_rate_ignores_days_before_start_and_after_today_or_archive() -> None:
-    habit = _habit(archived_at=datetime.combine(_day(2), datetime.min.time(), tzinfo=UTC))
+    archived_at = datetime.combine(_day(2), datetime.min.time(), tzinfo=BOGOTA)
+    habit = _habit(archived_at=archived_at)
     stats = compute_stats(
         habit, _logs(_day(0), _day(1)), date(2026, 9, 1), _day(30), today=_day(10)
     )
     assert (stats.completed, stats.expected) == (2, 3)
+
+    # 00:00Z on day 2 is still day 1 in Bogota, so the habit was archived on day 1.
+    habit.archived_at = archived_at.astimezone(UTC).replace(hour=0)
+    stats = compute_stats(
+        habit, _logs(_day(0), _day(1)), date(2026, 9, 1), _day(30), today=_day(10)
+    )
+    assert (stats.completed, stats.expected) == (2, 2)
 
 
 def test_no_expected_days_gives_zero_rate() -> None:

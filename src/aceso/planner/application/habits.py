@@ -6,7 +6,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from aceso.planner.application.calendar import discard_event
 from aceso.planner.application.habit_calendar import habit_event_window, habit_wants_event
 from aceso.planner.application.habit_stats import HabitStats, compute_stats
-from aceso.planner.application.ranges import validate_range
+from aceso.planner.application.ranges import DEFAULT_TZ, local_day, validate_range
 from aceso.planner.domain.entities import CalendarEvent, Habit, HabitFrequency, HabitLog
 from aceso.planner.domain.ports import CalendarEventRepository, HabitRepository
 from aceso.shared.domain.errors import InvalidOperationError, NotFoundError
@@ -144,9 +144,15 @@ class HabitService:
 class HabitTracking:
     """Daily check-ins and statistics for a habit."""
 
-    def __init__(self, habits: HabitRepository, clock: Callable[[], datetime] = _utcnow) -> None:
+    def __init__(
+        self,
+        habits: HabitRepository,
+        clock: Callable[[], datetime] = _utcnow,
+        tz: ZoneInfo = DEFAULT_TZ,
+    ) -> None:
         self._habits = habits
         self._clock = clock
+        self._tz = tz
 
     async def log(
         self, user_id: int, habit_id: int, day: date, count: int = 1, note: str | None = None
@@ -179,9 +185,9 @@ class HabitTracking:
         validate_range(start, end)
         habit = await self._get(user_id, habit_id)
         assert habit.id is not None
-        today = self._clock().date()
+        today = local_day(self._clock(), self._tz)
         logs = await self._habits.list_logs(habit.id, end=today)
-        return compute_stats(habit, logs, start, end, today)
+        return compute_stats(habit, logs, start, end, today, self._tz)
 
     async def _get(self, user_id: int, habit_id: int) -> Habit:
         habit = await self._habits.get(user_id, habit_id)

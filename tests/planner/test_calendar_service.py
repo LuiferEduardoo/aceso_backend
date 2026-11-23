@@ -1,10 +1,12 @@
 from datetime import UTC, date, datetime, time, timedelta
+from zoneinfo import ZoneInfo
 
 import pytest
 
 from aceso.planner.application.agenda import Agenda
 from aceso.planner.application.calendar import CalendarService
 from aceso.planner.application.habits import HabitService, HabitTracking
+from aceso.planner.application.ranges import day_bounds
 from aceso.planner.application.tasks import TaskService
 from aceso.planner.domain.entities import CalendarEvent, Habit, HabitFrequency, Task
 from aceso.shared.domain.errors import InvalidOperationError, NotFoundError
@@ -38,9 +40,50 @@ async def test_event_times_and_all_day_normalization(events: FakeCalendarEventRe
         await service.create(_event(end_at=_at(12, 8)))
 
     event = await service.create(_event(all_day=True, start_at=_at(12, 15), end_at=_at(12, 16)))
-    assert event.start_at == datetime(2026, 10, 12, tzinfo=UTC)
-    assert event.end_at == datetime(2026, 10, 13, tzinfo=UTC)
+    assert event.start_at == datetime(2026, 10, 12, 5, tzinfo=UTC)  # Bogota midnight
+    assert event.end_at == datetime(2026, 10, 13, 5, tzinfo=UTC)
     assert event.sync_pending
+
+    # 02:00Z on the 12th is still the 11th in Bogota.
+    late = await service.create(_event(all_day=True, start_at=_at(12, 2), end_at=_at(12, 3)))
+    assert (late.start_at, late.end_at) == (_at(11, 5), _at(12, 5))
+
+
+def test_day_bounds_follow_bogota_midnight() -> None:
+    assert day_bounds(date(2026, 3, 10), date(2026, 3, 10)) == (
+        datetime(2026, 3, 10, 5, tzinfo=UTC),
+        datetime(2026, 3, 11, 5, tzinfo=UTC),
+    )
+    utc = ZoneInfo("UTC")
+    assert day_bounds(date(2026, 3, 10), date(2026, 3, 10), utc) == (
+        datetime(2026, 3, 10, tzinfo=utc),
+        datetime(2026, 3, 11, tzinfo=utc),
+    )
+
+
+async def test_events_range_covers_one_bogota_day(events: FakeCalendarEventRepository) -> None:
+    service = CalendarService(events)
+    before = await service.create(_event(start_at=_at(12, 4), end_at=_at(12, 5)))  # 11th 23:00
+    inside = await service.create(_event(start_at=_at(12, 5), end_at=_at(12, 6)))  # 12th 00:00
+    last = await service.create(_event(start_at=_at(13, 4), end_at=_at(13, 5)))  # 12th 23:00
+    after = await service.create(_event(start_at=_at(13, 5), end_at=_at(13, 6)))  # 13th 00:00
+    found = {e.id for e in await service.between(1, date(2026, 10, 12), date(2026, 10, 12))}
+    assert found == {inside.id, last.id}
+    assert before.id not in found and after.id not in found
+
+
+async def test_agenda_buckets_tasks_by_bogota_day(events: FakeCalendarEventRepository) -> None:
+    tasks = FakeTaskRepository()
+    late = datetime(2026, 3, 10, 22, tzinfo=ZoneInfo("America/Bogota"))  # 03:00Z on the 11th
+    await TaskService(tasks, events).create(
+        Task(user_id=1, title="Late", scheduled_start=late, scheduled_end=late + timedelta(hours=1))
+    )
+    tenth, eleventh = await Agenda(events, tasks, FakeHabitRepository()).between(
+        1, date(2026, 3, 10), date(2026, 3, 11)
+    )
+    assert [t.title for t in tenth.tasks] == ["Late"]
+    assert [e.title for e in tenth.events] == ["Late"]
+    assert eleventh.tasks == [] and eleventh.events == []
 
 
 async def test_range_and_delete(events: FakeCalendarEventRepository) -> None:

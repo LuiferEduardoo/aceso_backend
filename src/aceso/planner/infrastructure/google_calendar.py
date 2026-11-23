@@ -9,6 +9,7 @@ import httpx
 
 from aceso.planner.domain.entities import (
     ACESO_REF_KEY,
+    DEFAULT_TIMEZONE,
     EventDraft,
     GoogleCalendar,
     OAuthTokens,
@@ -36,20 +37,22 @@ def _tokens(data: dict[str, Any]) -> OAuthTokens:
         raise IntegrationError("Unexpected token response from Google") from exc
 
 
-def _parse_time(value: dict[str, Any] | None) -> tuple[datetime | None, bool]:
-    """Google gives `dateTime` for timed events and `date` for all-day ones."""
+def _parse_time(value: dict[str, Any] | None, tz: ZoneInfo) -> tuple[datetime | None, bool]:
+    """Google gives `dateTime` for timed events and `date` for all-day ones (days in `tz`)."""
     if not value:
         return None, False
     if "dateTime" in value:
         return datetime.fromisoformat(value["dateTime"]).astimezone(UTC), False
     if "date" in value:
-        return datetime.combine(date.fromisoformat(value["date"]), time.min, tzinfo=UTC), True
+        local = datetime.combine(date.fromisoformat(value["date"]), time.min, tzinfo=tz)
+        return local.astimezone(UTC), True
     return None, False
 
 
-def map_remote_event(data: dict[str, Any]) -> RemoteEvent:
-    start_at, all_day = _parse_time(data.get("start"))
-    end_at, _ = _parse_time(data.get("end"))
+def map_remote_event(data: dict[str, Any], timezone: str = DEFAULT_TIMEZONE) -> RemoteEvent:
+    tz = ZoneInfo(timezone)
+    start_at, all_day = _parse_time(data.get("start"), tz)
+    end_at, _ = _parse_time(data.get("end"), tz)
     private = (data.get("extendedProperties") or {}).get("private") or {}
     updated = data.get("updated")
     return RemoteEvent(
@@ -70,7 +73,7 @@ def map_remote_event(data: dict[str, Any]) -> RemoteEvent:
 
 def _format_time(moment: datetime, all_day: bool, timezone: str) -> dict[str, str]:
     if all_day:
-        return {"date": moment.astimezone(UTC).date().isoformat()}
+        return {"date": moment.astimezone(ZoneInfo(timezone)).date().isoformat()}
     return {"dateTime": moment.astimezone(ZoneInfo(timezone)).isoformat(), "timeZone": timezone}
 
 
@@ -99,11 +102,13 @@ class GoogleCalendarClient:
         client_secret: str,
         redirect_uri: str,
         transport: httpx.AsyncBaseTransport | None = None,
+        timezone: str = DEFAULT_TIMEZONE,
     ) -> None:
         self._client_id = client_id
         self._client_secret = client_secret
         self._redirect_uri = redirect_uri
         self._transport = transport
+        self._timezone = timezone  # Zone whose days Google's all-day `date` values denote.
 
     def _require_config(self) -> None:
         if not self._client_id or not self._client_secret:
@@ -201,7 +206,7 @@ class GoogleCalendarClient:
             raise NotFoundError("Google calendar not found; choose another one")
         data = self._check(response)
         return RemoteEventPage(
-            events=[map_remote_event(item) for item in data.get("items", [])],
+            events=[map_remote_event(item, self._timezone) for item in data.get("items", [])],
             next_page_token=data.get("nextPageToken"),
             next_sync_token=data.get("nextSyncToken"),
         )
@@ -215,7 +220,7 @@ class GoogleCalendarClient:
             access_token=access_token,
             json=draft_body(draft),
         )
-        return map_remote_event(self._check(response))
+        return map_remote_event(self._check(response), self._timezone)
 
     async def patch_event(
         self, access_token: str, calendar_id: str, event_id: str, draft: EventDraft
@@ -228,7 +233,7 @@ class GoogleCalendarClient:
         )
         if response.status_code in (404, 410):
             raise RemoteEventMissingError("Google event no longer exists")
-        return map_remote_event(self._check(response))
+        return map_remote_event(self._check(response), self._timezone)
 
     async def delete_event(self, access_token: str, calendar_id: str, event_id: str) -> None:
         response = await self._send(

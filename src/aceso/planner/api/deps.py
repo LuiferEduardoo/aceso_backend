@@ -1,4 +1,5 @@
 from typing import Annotated
+from zoneinfo import ZoneInfo
 
 from fastapi import Depends
 
@@ -28,6 +29,13 @@ from aceso.shared.infrastructure.oauth_state import JwtOAuthStateSigner
 GOOGLE_STATE_PURPOSE = "google_oauth_state"
 
 
+def get_planner_timezone(settings: SettingsDep) -> ZoneInfo:
+    return ZoneInfo(settings.timezone)
+
+
+PlannerTimezoneDep = Annotated[ZoneInfo, Depends(get_planner_timezone)]
+
+
 def get_habit_service(session: SessionDep) -> HabitService:
     return HabitService(
         SqlAlchemyHabitRepository(session), SqlAlchemyCalendarEventRepository(session)
@@ -37,8 +45,8 @@ def get_habit_service(session: SessionDep) -> HabitService:
 HabitServiceDep = Annotated[HabitService, Depends(get_habit_service)]
 
 
-def get_habit_tracking(session: SessionDep) -> HabitTracking:
-    return HabitTracking(SqlAlchemyHabitRepository(session))
+def get_habit_tracking(session: SessionDep, tz: PlannerTimezoneDep) -> HabitTracking:
+    return HabitTracking(SqlAlchemyHabitRepository(session), tz=tz)
 
 
 HabitTrackingDep = Annotated[HabitTracking, Depends(get_habit_tracking)]
@@ -53,18 +61,19 @@ def get_task_service(session: SessionDep) -> TaskService:
 TaskServiceDep = Annotated[TaskService, Depends(get_task_service)]
 
 
-def get_calendar_service(session: SessionDep) -> CalendarService:
-    return CalendarService(SqlAlchemyCalendarEventRepository(session))
+def get_calendar_service(session: SessionDep, tz: PlannerTimezoneDep) -> CalendarService:
+    return CalendarService(SqlAlchemyCalendarEventRepository(session), tz=tz)
 
 
 CalendarServiceDep = Annotated[CalendarService, Depends(get_calendar_service)]
 
 
-def get_agenda(session: SessionDep) -> Agenda:
+def get_agenda(session: SessionDep, tz: PlannerTimezoneDep) -> Agenda:
     return Agenda(
         SqlAlchemyCalendarEventRepository(session),
         SqlAlchemyTaskRepository(session),
         SqlAlchemyHabitRepository(session),
+        tz,
     )
 
 
@@ -82,7 +91,10 @@ CalendarEventRepositoryDep = Annotated[
 
 def get_google_gateway(settings: SettingsDep) -> GoogleCalendarGateway:
     return GoogleCalendarClient(
-        settings.google_client_id, settings.google_client_secret, settings.google_redirect_uri
+        settings.google_client_id,
+        settings.google_client_secret,
+        settings.google_redirect_uri,
+        timezone=settings.timezone,
     )
 
 

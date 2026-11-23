@@ -39,8 +39,8 @@ def test_first_occurrence_uses_habit_timezone_and_weekdays() -> None:
     assert start == datetime(2026, 10, 9, 5, 30, tzinfo=UTC)
     assert (end - start).total_seconds() == 45 * 60
 
-    start, end = habit_event_window(_habit())
-    assert start == datetime(2026, 10, 7, 7, 30, tzinfo=UTC)
+    start, end = habit_event_window(_habit())  # default zone: America/Bogota (UTC-5)
+    assert start == datetime(2026, 10, 7, 12, 30, tzinfo=UTC)
     assert (end - start).total_seconds() == 30 * 60
 
 

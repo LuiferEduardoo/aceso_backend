@@ -23,11 +23,13 @@ async def test_event_flow(auth_client: AsyncClient) -> None:
         json={
             "title": "Trip",
             "all_day": True,
-            "start_at": "2026-10-13T00:00:00Z",
-            "end_at": "2026-10-15T00:00:00Z",
+            "start_at": "2026-10-13T00:00:00-05:00",
+            "end_at": "2026-10-15T00:00:00-05:00",
         },
     )
-    assert response.json()["end_at"] == "2026-10-15T00:00:00Z"
+    # All-day events span whole Bogota days (UTC-5): midnight there is 05:00Z.
+    assert response.json()["start_at"] == "2026-10-13T05:00:00Z"
+    assert response.json()["end_at"] == "2026-10-15T05:00:00Z"
 
     response = await auth_client.get(
         "/planner/events", params={"from": "2026-10-12", "to": "2026-10-12"}
