@@ -5,7 +5,7 @@ import pytest
 from aceso.planner.application.habits import HabitService, HabitTracking
 from aceso.planner.domain.entities import Habit, HabitFrequency
 from aceso.shared.domain.errors import InvalidOperationError, NotFoundError
-from tests.planner.fakes import FakeHabitRepository
+from tests.planner.fakes import FakeCalendarEventRepository, FakeHabitRepository
 
 NOW = datetime(2026, 10, 10, 12, tzinfo=UTC)
 
@@ -22,7 +22,7 @@ def repo() -> FakeHabitRepository:
 
 
 async def test_frequency_rules_are_validated(repo: FakeHabitRepository) -> None:
-    service = HabitService(repo)
+    service = HabitService(repo, FakeCalendarEventRepository())
     with pytest.raises(InvalidOperationError):
         await service.create(_habit(frequency=HabitFrequency.WEEKDAYS))
     with pytest.raises(InvalidOperationError):
@@ -42,7 +42,7 @@ async def test_frequency_rules_are_validated(repo: FakeHabitRepository) -> None:
 
 
 async def test_archive_and_scoping(repo: FakeHabitRepository) -> None:
-    service = HabitService(repo, clock=lambda: NOW)
+    service = HabitService(repo, FakeCalendarEventRepository(), clock=lambda: NOW)
     habit = await service.create(_habit())
     assert habit.id is not None
 
@@ -57,7 +57,7 @@ async def test_archive_and_scoping(repo: FakeHabitRepository) -> None:
 
 
 async def test_log_unlog_and_stats(repo: FakeHabitRepository) -> None:
-    habit = await HabitService(repo).create(_habit())
+    habit = await HabitService(repo, FakeCalendarEventRepository()).create(_habit())
     assert habit.id is not None
     tracking = HabitTracking(repo, clock=lambda: NOW)
 
@@ -82,7 +82,7 @@ async def test_log_unlog_and_stats(repo: FakeHabitRepository) -> None:
 
 
 async def test_archived_habits_cannot_be_logged(repo: FakeHabitRepository) -> None:
-    service = HabitService(repo, clock=lambda: NOW)
+    service = HabitService(repo, FakeCalendarEventRepository(), clock=lambda: NOW)
     habit = await service.create(_habit())
     assert habit.id is not None
     await service.archive(1, habit.id)

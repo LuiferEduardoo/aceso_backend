@@ -1,5 +1,6 @@
 """An httpx MockTransport that imitates the Google OAuth + Calendar endpoints we use."""
 
+import json
 from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import parse_qs, unquote
@@ -30,6 +31,7 @@ class FakeGoogleCalendarApi:
         self.events: dict[str, dict[str, dict[str, Any]]] = {}
         self.changed_at: dict[tuple[str, str], int] = {}
         self.seq = 0
+        self.inserted = 0
         self.expired_tokens: set[str] = set()
         self.now = datetime(2026, 10, 10, 12, tzinfo=UTC)
 
@@ -91,7 +93,23 @@ class FakeGoogleCalendarApi:
     ) -> httpx.Response:
         if request.method == "GET" and event_id is None:
             return self._list(request, calendar_id)
-        return httpx.Response(404, json={"error": {"code": 404}})
+        if request.method == "POST" and event_id is None:
+            self.inserted += 1
+            body = json.loads(request.content)
+            event = {**body, "id": f"g{self.inserted}", "status": "confirmed"}
+            return httpx.Response(200, json=self._touch(calendar_id, event))
+        stored = self.events.get(calendar_id, {}).get(event_id or "")
+        if stored is None:
+            return httpx.Response(404, json={"error": {"code": 404}})
+        if stored.get("status") == "cancelled":
+            return httpx.Response(410, json={"error": {"code": 410}})
+        if request.method == "PATCH":
+            event = {**stored, **json.loads(request.content)}
+            return httpx.Response(200, json=self._touch(calendar_id, event))
+        if request.method == "DELETE":
+            self.cancel_remote(stored["id"], calendar_id)
+            return httpx.Response(204)
+        return httpx.Response(405)
 
     def _list(self, request: httpx.Request, calendar_id: str) -> httpx.Response:
         params = request.url.params

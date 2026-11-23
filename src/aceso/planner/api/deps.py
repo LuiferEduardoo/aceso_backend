@@ -11,6 +11,7 @@ from aceso.planner.domain.ports import (
     CalendarEventRepository,
     GoogleCalendarGateway,
     GoogleCalendarLinkRepository,
+    HabitRepository,
     OAuthStateSigner,
     TaskRepository,
 )
@@ -28,7 +29,9 @@ GOOGLE_STATE_PURPOSE = "google_oauth_state"
 
 
 def get_habit_service(session: SessionDep) -> HabitService:
-    return HabitService(SqlAlchemyHabitRepository(session))
+    return HabitService(
+        SqlAlchemyHabitRepository(session), SqlAlchemyCalendarEventRepository(session)
+    )
 
 
 HabitServiceDep = Annotated[HabitService, Depends(get_habit_service)]
@@ -107,3 +110,10 @@ def get_task_repository(session: SessionDep) -> TaskRepository:
 
 
 TaskRepositoryDep = Annotated[TaskRepository, Depends(get_task_repository)]
+
+
+def get_habit_repository(session: SessionDep) -> HabitRepository:
+    return SqlAlchemyHabitRepository(session)
+
+
+HabitRepositoryDep = Annotated[HabitRepository, Depends(get_habit_repository)]

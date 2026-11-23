@@ -3,10 +3,12 @@ from datetime import UTC, date, datetime
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from aceso.planner.application.calendar import discard_event
+from aceso.planner.application.habit_calendar import habit_event_window, habit_wants_event
 from aceso.planner.application.habit_stats import HabitStats, compute_stats
 from aceso.planner.application.ranges import validate_range
-from aceso.planner.domain.entities import Habit, HabitFrequency, HabitLog
-from aceso.planner.domain.ports import HabitRepository
+from aceso.planner.domain.entities import CalendarEvent, Habit, HabitFrequency, HabitLog
+from aceso.planner.domain.ports import CalendarEventRepository, HabitRepository
 from aceso.shared.domain.errors import InvalidOperationError, NotFoundError
 
 HABIT_FIELDS = {
@@ -52,13 +54,23 @@ def _validate_habit(habit: Habit) -> None:
 
 
 class HabitService:
-    def __init__(self, habits: HabitRepository, clock: Callable[[], datetime] = _utcnow) -> None:
+    """Habit CRUD; a habit synced to the calendar owns one linked (recurring) event."""
+
+    def __init__(
+        self,
+        habits: HabitRepository,
+        events: CalendarEventRepository,
+        clock: Callable[[], datetime] = _utcnow,
+    ) -> None:
         self._habits = habits
+        self._events = events
         self._clock = clock
 
     async def create(self, habit: Habit) -> Habit:
         _validate_habit(habit)
-        return await self._habits.add(habit)
+        habit = await self._habits.add(habit)
+        await self._sync_event(habit)
+        return habit
 
     async def list_all(self, user_id: int, include_archived: bool = False) -> list[Habit]:
         return await self._habits.list_all(user_id, include_archived)
@@ -75,13 +87,16 @@ class HabitService:
             if name in HABIT_FIELDS:
                 setattr(habit, name, value)
         _validate_habit(habit)
-        return await self._habits.update(habit)
+        habit = await self._habits.update(habit)
+        await self._sync_event(habit)
+        return habit
 
     async def archive(self, user_id: int, habit_id: int) -> Habit:
         habit = await self.get(user_id, habit_id)
         if habit.archived_at is None:
             habit.archived_at = self._clock()
             habit = await self._habits.update(habit)
+            await self._sync_event(habit)
         return habit
 
     async def unarchive(self, user_id: int, habit_id: int) -> Habit:
@@ -89,10 +104,41 @@ class HabitService:
         if habit.archived_at is not None:
             habit.archived_at = None
             habit = await self._habits.update(habit)
+            await self._sync_event(habit)
         return habit
 
     async def delete(self, user_id: int, habit_id: int) -> None:
-        await self._habits.delete(await self.get(user_id, habit_id))
+        habit = await self.get(user_id, habit_id)
+        assert habit.id is not None
+        event = await self._events.get_by_habit(user_id, habit.id)
+        if event is not None:
+            await discard_event(self._events, event, self._clock())
+        await self._habits.delete(habit)
+
+    async def _sync_event(self, habit: Habit) -> None:
+        assert habit.id is not None
+        event = await self._events.get_by_habit(habit.user_id, habit.id)
+        if not habit_wants_event(habit):
+            if event is not None:
+                await discard_event(self._events, event, self._clock())
+            return
+        start_at, end_at = habit_event_window(habit)
+        wanted = {
+            "title": habit.name,
+            "description": habit.description,
+            "start_at": start_at,
+            "end_at": end_at,
+        }
+        if event is None:
+            await self._events.add(
+                CalendarEvent(user_id=habit.user_id, habit_id=habit.id, sync_pending=True, **wanted)
+            )
+            return
+        # The recurrence depends on more than these fields, so any habit change is re-pushed.
+        for name, value in wanted.items():
+            setattr(event, name, value)
+        event.sync_pending = True
+        await self._events.update(event)
 
 
 class HabitTracking:

@@ -196,6 +196,17 @@ class FakeCalendarEventRepository:
         assert event.id is not None
         self.events.pop(event.id, None)
 
+    async def get_by_habit(self, user_id: int, habit_id: int) -> CalendarEvent | None:
+        return next((deepcopy(e) for e in self.live(user_id) if e.habit_id == habit_id), None)
+
+    async def list_pending(self, user_id: int) -> list[CalendarEvent]:
+        return [
+            deepcopy(e)
+            for e in self.events.values()
+            if e.user_id == user_id
+            and (e.sync_pending or (e.google_event_id is None and e.deleted_at is None))
+        ]
+
     async def get_by_google_id(self, user_id: int, google_event_id: str) -> CalendarEvent | None:
         return next(
             (

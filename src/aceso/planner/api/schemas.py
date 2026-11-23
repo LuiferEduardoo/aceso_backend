@@ -210,3 +210,5 @@ class GoogleSyncResultRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     pulled: int = Field(description="Remote changes applied locally")
+    pushed: int = Field(description="Local events created or updated in Google")
+    deleted: int = Field(description="Local deletions applied in Google")

@@ -87,7 +87,7 @@ async def test_agenda_merges_events_tasks_and_habits(events: FakeCalendarEventRe
     await task_service.create(
         Task(user_id=1, title="Slot", scheduled_start=_at(12, 14), scheduled_end=_at(12, 15))
     )
-    habit = await HabitService(habits).create(
+    habit = await HabitService(habits, events).create(
         Habit(
             user_id=1,
             name="Gym",

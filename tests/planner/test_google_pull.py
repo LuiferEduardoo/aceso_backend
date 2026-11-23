@@ -2,53 +2,10 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from aceso.planner.application.google_sync import SyncGoogleCalendar
-from aceso.planner.domain.entities import (
-    CalendarEvent,
-    EventSource,
-    GoogleCalendarLink,
-    OAuthTokens,
-    Task,
-)
-from aceso.planner.infrastructure.google_calendar import GoogleCalendarClient
-from aceso.shared.domain.credentials import IntegrationProvider
+from aceso.planner.domain.entities import CalendarEvent, EventSource, Task
 from aceso.shared.domain.errors import NotFoundError
-from tests.planner.fakes import (
-    FakeCalendarEventRepository,
-    FakeCredentialStore,
-    FakeGoogleCalendarLinkRepository,
-    FakeTaskRepository,
-)
 from tests.planner.google_mock import FakeGoogleCalendarApi, timed
-
-NOW = datetime(2026, 10, 10, 12, tzinfo=UTC)
-
-
-class Harness:
-    def __init__(self, api: FakeGoogleCalendarApi | None = None) -> None:
-        self.api = api or FakeGoogleCalendarApi()
-        self.credentials = FakeCredentialStore()
-        self.links = FakeGoogleCalendarLinkRepository()
-        self.events = FakeCalendarEventRepository()
-        self.tasks = FakeTaskRepository()
-
-    async def connect(self) -> None:
-        tokens = OAuthTokens("access-0", NOW + timedelta(hours=1), "refresh-0")
-        await self.credentials.save(1, IntegrationProvider.GOOGLE, tokens.to_payload())
-        await self.links.save(GoogleCalendarLink(user_id=1))
-
-    async def sync(self) -> int:
-        client = GoogleCalendarClient("cid", "secret", "http://cb", transport=self.api.transport())
-        use_case = SyncGoogleCalendar(
-            client, self.credentials, self.links, self.events, self.tasks, clock=lambda: NOW
-        )
-        return (await use_case.execute(1)).pulled
-
-    def by_google_id(self, google_id: str) -> CalendarEvent:
-        return next(e for e in self.events.events.values() if e.google_event_id == google_id)
-
-    def sync_requests(self) -> list[dict[str, str]]:
-        return [dict(r.url.params) for r in self.api.requests if r.url.path.endswith("/events")]
+from tests.planner.sync_harness import NOW, Harness
 
 
 @pytest.fixture
@@ -109,8 +66,11 @@ async def test_last_write_wins(h: Harness) -> None:
     h.api.edit_remote("b", summary="Remote b")
 
     assert await h.sync() == 1
-    assert h.by_google_id("a").title == "Local a" and h.by_google_id("a").sync_pending
     assert h.by_google_id("b").title == "Remote b" and not h.by_google_id("b").sync_pending
+    # The newer local edit survived the pull and was then pushed.
+    assert h.by_google_id("a").title == "Local a" and not h.by_google_id("a").sync_pending
+    assert h.api.live()["a"]["summary"] == "Local a"
+    assert h.last.pushed == 1
 
 
 async def test_remote_delete_versus_newer_local_edit(h: Harness) -> None:
@@ -124,7 +84,9 @@ async def test_remote_delete_versus_newer_local_edit(h: Harness) -> None:
 
     assert event.id is not None
     kept = h.events.events[event.id]
-    assert kept.deleted_at is None and kept.google_event_id is None and kept.sync_pending
+    # The local edit wins: it is created again in Google under a new id.
+    assert kept.deleted_at is None and kept.google_event_id == "g1" and not kept.sync_pending
+    assert "a" not in h.api.live() and "g1" in h.api.live()
 
 
 async def test_expired_sync_token_falls_back_to_full_resync(h: Harness) -> None:

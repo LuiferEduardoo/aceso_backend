@@ -3,11 +3,13 @@ from typing import Protocol
 
 from aceso.planner.domain.entities import (
     CalendarEvent,
+    EventDraft,
     GoogleCalendar,
     GoogleCalendarLink,
     Habit,
     HabitLog,
     OAuthTokens,
+    RemoteEvent,
     RemoteEventPage,
     Task,
     TaskStatus,
@@ -85,6 +87,12 @@ class CalendarEventRepository(Protocol):
         """Remove the row for good."""
         ...
 
+    async def get_by_habit(self, user_id: int, habit_id: int) -> CalendarEvent | None: ...
+
+    async def list_pending(self, user_id: int) -> list[CalendarEvent]:
+        """Events (and tombstones) with local changes Google has not seen yet."""
+        ...
+
     async def get_by_google_id(self, user_id: int, google_event_id: str) -> CalendarEvent | None:
         """Live event or tombstone carrying that Google id."""
         ...
@@ -134,6 +142,20 @@ class GoogleCalendarGateway(Protocol):
         page_token: str | None = None,
     ) -> RemoteEventPage:
         """Raises SyncTokenExpiredError when Google invalidates `sync_token` (410)."""
+        ...
+
+    async def insert_event(
+        self, access_token: str, calendar_id: str, draft: EventDraft
+    ) -> RemoteEvent: ...
+
+    async def patch_event(
+        self, access_token: str, calendar_id: str, event_id: str, draft: EventDraft
+    ) -> RemoteEvent:
+        """Raises RemoteEventMissingError when the event is gone."""
+        ...
+
+    async def delete_event(self, access_token: str, calendar_id: str, event_id: str) -> None:
+        """Deleting an event that is already gone is not an error."""
         ...
 
 

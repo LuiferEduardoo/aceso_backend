@@ -5,17 +5,20 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 from aceso.planner.application.google import valid_google_tokens
+from aceso.planner.application.habit_calendar import habit_rrule
 from aceso.planner.domain.entities import (
     CalendarEvent,
+    EventDraft,
     EventSource,
     GoogleCalendarLink,
     RemoteEvent,
 )
-from aceso.planner.domain.errors import SyncTokenExpiredError
+from aceso.planner.domain.errors import RemoteEventMissingError, SyncTokenExpiredError
 from aceso.planner.domain.ports import (
     CalendarEventRepository,
     GoogleCalendarGateway,
     GoogleCalendarLinkRepository,
+    HabitRepository,
     TaskRepository,
 )
 from aceso.shared.domain.credentials import CredentialStore
@@ -34,6 +37,8 @@ def _utcnow() -> datetime:
 @dataclass(frozen=True, slots=True)
 class GoogleSyncResult:
     pulled: int = 0
+    pushed: int = 0
+    deleted: int = 0
 
 
 def local_wins(local: CalendarEvent, remote: RemoteEvent) -> bool:
@@ -54,6 +59,7 @@ class SyncGoogleCalendar:
         links: GoogleCalendarLinkRepository,
         events: CalendarEventRepository,
         tasks: TaskRepository,
+        habits: HabitRepository,
         clock: Callable[[], datetime] = _utcnow,
     ) -> None:
         self._gateway = gateway
@@ -61,6 +67,7 @@ class SyncGoogleCalendar:
         self._links = links
         self._events = events
         self._tasks = tasks
+        self._habits = habits
         self._clock = clock
 
     async def execute(self, user_id: int) -> GoogleSyncResult:
@@ -69,9 +76,12 @@ class SyncGoogleCalendar:
             raise NotFoundError("Google account is not connected")
         tokens = await valid_google_tokens(self._gateway, self._credentials, user_id, self._clock)
         pulled = await self._pull(user_id, tokens.access_token, link)
+        # Keep the pull's sync token even if the push fails half-way.
+        await self._links.save(link)
+        pushed, deleted = await self._push(user_id, tokens.access_token, link.calendar_id)
         link.last_synced_at = self._clock()
         await self._links.save(link)
-        return GoogleSyncResult(pulled=pulled)
+        return GoogleSyncResult(pulled=pulled, pushed=pushed, deleted=deleted)
 
     # -- pull -------------------------------------------------------------------------------
 
@@ -117,6 +127,8 @@ class SyncGoogleCalendar:
 
     async def _apply(self, user_id: int, remote: RemoteEvent) -> int:
         local = await self._events.get_by_google_id(user_id, remote.id)
+        if local is None and not remote.cancelled:
+            local = await self._orphan_of(user_id, remote)
         if remote.cancelled:
             return await self._apply_cancel(local, remote)
         if remote.start_at is None or remote.end_at is None or remote.end_at <= remote.start_at:
@@ -135,16 +147,32 @@ class SyncGoogleCalendar:
                 )
             )
             return 1
+        if local.etag is not None and local.etag == remote.etag:
+            return 0  # Nothing new remotely (typically the echo of our own push).
         if local_wins(local, remote):
             return 0
-        if local.deleted_at is None and local.etag is not None and local.etag == remote.etag:
-            return 0  # Echo of our own push.
         if local.deleted_at is not None:
             # Edited remotely after the local delete: bring it back as a standalone event.
             local.deleted_at, local.task_id, local.habit_id = None, None, None
         await self._events.update(_with_remote(local, remote))
         await self._mirror_on_task(local)
         return 1
+
+    async def _orphan_of(self, user_id: int, remote: RemoteEvent) -> CalendarEvent | None:
+        """A local event we pushed but never stored the Google id for (e.g. rolled back)."""
+        kind, _, raw_id = (remote.aceso_ref or "").partition(":")
+        if not raw_id.isdigit():
+            return None
+        if kind == "event":
+            local = await self._events.get(user_id, int(raw_id))
+        elif kind == "task":
+            local = await self._events.get_by_task(user_id, int(raw_id))
+        else:
+            return None
+        if local is None or local.google_event_id is not None:
+            return None
+        local.google_event_id = remote.id
+        return await self._events.update(local)
 
     async def _apply_cancel(self, local: CalendarEvent | None, remote: RemoteEvent) -> int:
         if local is None:
@@ -193,6 +221,60 @@ class SyncGoogleCalendar:
         task.notes = event.description
         task.scheduled_start, task.scheduled_end = event.start_at, event.end_at
         await self._tasks.update(task)
+
+    # -- push -------------------------------------------------------------------------------
+
+    async def _push(self, user_id: int, access_token: str, calendar_id: str) -> tuple[int, int]:
+        pushed = deleted = 0
+        for event in await self._events.list_pending(user_id):
+            if event.deleted_at is not None:
+                if event.google_event_id is not None:
+                    await self._gateway.delete_event(
+                        access_token, calendar_id, event.google_event_id
+                    )
+                    deleted += 1
+                await self._events.delete(event)
+                continue
+            draft = await self._draft(event)
+            remote = None
+            if event.google_event_id is not None:
+                try:
+                    remote = await self._gateway.patch_event(
+                        access_token, calendar_id, event.google_event_id, draft
+                    )
+                except RemoteEventMissingError:
+                    remote = None  # Deleted in Google meanwhile: create it again.
+            if remote is None:
+                remote = await self._gateway.insert_event(access_token, calendar_id, draft)
+            event.google_event_id = remote.id
+            event.etag = remote.etag
+            event.remote_updated_at = remote.updated
+            event.sync_pending = False
+            await self._events.update(event)
+            pushed += 1
+        return pushed, deleted
+
+    async def _draft(self, event: CalendarEvent) -> EventDraft:
+        common = {
+            "title": event.title,
+            "description": event.description,
+            "location": event.location,
+            "start_at": event.start_at,
+            "end_at": event.end_at,
+            "all_day": event.all_day,
+        }
+        if event.habit_id is not None:
+            habit = await self._habits.get(event.user_id, event.habit_id)
+            if habit is not None:
+                return EventDraft(
+                    **common,
+                    aceso_ref=f"{HABIT_REF_PREFIX}{habit.id}",
+                    timezone=habit.timezone,
+                    recurrence=[habit_rrule(habit)],
+                )
+        if event.task_id is not None:
+            return EventDraft(**common, aceso_ref=f"task:{event.task_id}")
+        return EventDraft(**common, aceso_ref=f"event:{event.id}")
 
 
 def _mirrors_habit(event: RemoteEvent, habit_ids: set[str]) -> bool:

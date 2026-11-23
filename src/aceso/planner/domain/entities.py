@@ -206,3 +206,18 @@ class RemoteEventPage:
     events: list[RemoteEvent]
     next_page_token: str | None = None
     next_sync_token: str | None = None
+
+
+@dataclass(slots=True, frozen=True)
+class EventDraft:
+    """What we send to Google for one local event (a habit adds a recurrence rule)."""
+
+    title: str
+    start_at: datetime
+    end_at: datetime
+    aceso_ref: str
+    all_day: bool = False
+    description: str | None = None
+    location: str | None = None
+    timezone: str = "UTC"
+    recurrence: list[str] = field(default_factory=list)

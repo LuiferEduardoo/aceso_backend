@@ -3,17 +3,19 @@
 from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
 from urllib.parse import quote, urlencode
+from zoneinfo import ZoneInfo
 
 import httpx
 
 from aceso.planner.domain.entities import (
     ACESO_REF_KEY,
+    EventDraft,
     GoogleCalendar,
     OAuthTokens,
     RemoteEvent,
     RemoteEventPage,
 )
-from aceso.planner.domain.errors import SyncTokenExpiredError
+from aceso.planner.domain.errors import RemoteEventMissingError, SyncTokenExpiredError
 from aceso.shared.domain.errors import IntegrationError, InvalidOperationError, NotFoundError
 
 AUTHORIZE_URL = "https://accounts.google.com/o/oauth2/v2/auth"
@@ -64,6 +66,26 @@ def map_remote_event(data: dict[str, Any]) -> RemoteEvent:
         aceso_ref=private.get(ACESO_REF_KEY),
         recurring_event_id=data.get("recurringEventId"),
     )
+
+
+def _format_time(moment: datetime, all_day: bool, timezone: str) -> dict[str, str]:
+    if all_day:
+        return {"date": moment.astimezone(UTC).date().isoformat()}
+    return {"dateTime": moment.astimezone(ZoneInfo(timezone)).isoformat(), "timeZone": timezone}
+
+
+def draft_body(draft: EventDraft) -> dict[str, Any]:
+    body: dict[str, Any] = {
+        "summary": draft.title,
+        "description": draft.description or "",
+        "location": draft.location or "",
+        "start": _format_time(draft.start_at, draft.all_day, draft.timezone),
+        "end": _format_time(draft.end_at, draft.all_day, draft.timezone),
+        "extendedProperties": {"private": {ACESO_REF_KEY: draft.aceso_ref}},
+    }
+    if draft.recurrence:
+        body["recurrence"] = list(draft.recurrence)
+    return body
 
 
 def calendar_path(calendar_id: str) -> str:
@@ -183,6 +205,39 @@ class GoogleCalendarClient:
             next_page_token=data.get("nextPageToken"),
             next_sync_token=data.get("nextSyncToken"),
         )
+
+    async def insert_event(
+        self, access_token: str, calendar_id: str, draft: EventDraft
+    ) -> RemoteEvent:
+        response = await self._send(
+            "POST",
+            f"{calendar_path(calendar_id)}/events",
+            access_token=access_token,
+            json=draft_body(draft),
+        )
+        return map_remote_event(self._check(response))
+
+    async def patch_event(
+        self, access_token: str, calendar_id: str, event_id: str, draft: EventDraft
+    ) -> RemoteEvent:
+        response = await self._send(
+            "PATCH",
+            f"{calendar_path(calendar_id)}/events/{quote(event_id, safe='')}",
+            access_token=access_token,
+            json=draft_body(draft),
+        )
+        if response.status_code in (404, 410):
+            raise RemoteEventMissingError("Google event no longer exists")
+        return map_remote_event(self._check(response))
+
+    async def delete_event(self, access_token: str, calendar_id: str, event_id: str) -> None:
+        response = await self._send(
+            "DELETE",
+            f"{calendar_path(calendar_id)}/events/{quote(event_id, safe='')}",
+            access_token=access_token,
+        )
+        if response.status_code not in (404, 410):
+            self._check(response)
 
     async def _token_request(self, data: dict[str, str]) -> dict[str, Any]:
         self._require_config()

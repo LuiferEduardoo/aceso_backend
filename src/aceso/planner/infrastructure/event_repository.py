@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import ColumnElement, delete, or_, select, update
+from sqlalchemy import ColumnElement, and_, delete, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from aceso.planner.domain.entities import CalendarEvent, EventSource
@@ -93,6 +93,30 @@ class SqlAlchemyCalendarEventRepository:
         if model is not None and model.user_id == event.user_id:
             await self._session.delete(model)
             await self._session.flush()
+
+    async def get_by_habit(self, user_id: int, habit_id: int) -> CalendarEvent | None:
+        return await self._one(
+            CalendarEventModel.user_id == user_id,
+            CalendarEventModel.habit_id == habit_id,
+            CalendarEventModel.deleted_at.is_(None),
+        )
+
+    async def list_pending(self, user_id: int) -> list[CalendarEvent]:
+        stmt = (
+            select(CalendarEventModel)
+            .where(
+                CalendarEventModel.user_id == user_id,
+                or_(
+                    CalendarEventModel.sync_pending.is_(True),
+                    and_(
+                        CalendarEventModel.google_event_id.is_(None),
+                        CalendarEventModel.deleted_at.is_(None),
+                    ),
+                ),
+            )
+            .order_by(CalendarEventModel.id)
+        )
+        return [_to_entity(m) for m in await self._session.scalars(stmt)]
 
     async def get_by_google_id(self, user_id: int, google_event_id: str) -> CalendarEvent | None:
         return await self._one(

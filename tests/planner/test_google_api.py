@@ -112,3 +112,57 @@ async def test_google_pull_into_agenda(app: FastAPI, auth_client: AsyncClient) -
     api.cancel_remote("remote-1")
     await auth_client.post("/planner/google/sync")
     assert (await auth_client.get(f"/planner/events/{event['id']}")).status_code == 404
+
+
+async def test_two_way_sync_of_a_scheduled_task(app: FastAPI, auth_client: AsyncClient) -> None:
+    api = FakeGoogleCalendarApi()
+    use_fake_google(app, api)
+    await connect_google(auth_client)
+    task = (
+        await auth_client.post(
+            "/planner/tasks",
+            json={
+                "title": "Dentist",
+                "scheduled_start": "2026-10-12T09:00:00Z",
+                "scheduled_end": "2026-10-12T10:00:00Z",
+            },
+        )
+    ).json()
+    await auth_client.post(
+        "/planner/habits",
+        json={
+            "name": "Stretch",
+            "start_date": "2026-10-12",
+            "time_of_day": "07:00:00",
+            "sync_to_calendar": True,
+        },
+    )
+
+    response = await auth_client.post("/planner/google/sync")
+    assert response.status_code == 200, response.text
+    assert response.json() == {"pulled": 0, "pushed": 2, "deleted": 0}
+    by_ref = {e["extendedProperties"]["private"]["aceso_ref"]: e for e in api.live().values()}
+    remote_task = by_ref[f"task:{task['id']}"]
+    assert remote_task["summary"] == "Dentist"
+    assert any(e.get("recurrence") == ["RRULE:FREQ=DAILY"] for e in by_ref.values())
+
+    # Edited in Google: the next sync moves the task and its event.
+    api.edit_remote(
+        remote_task["id"],
+        summary="Dentist (moved)",
+        **timed("2026-10-13T15:00:00Z", "2026-10-13T16:00:00Z"),
+    )
+    response = await auth_client.post("/planner/google/sync")
+    assert response.json() == {"pulled": 1, "pushed": 0, "deleted": 0}
+    response = await auth_client.get(
+        "/planner/agenda", params={"from": "2026-10-13", "to": "2026-10-13"}
+    )
+    day = response.json()[0]
+    assert [t["title"] for t in day["tasks"]] == ["Dentist (moved)"]
+    assert day["events"][0]["start_at"] == "2026-10-13T15:00:00Z"
+
+    # Deleted locally: removed from Google on the next sync.
+    assert (await auth_client.delete(f"/planner/tasks/{task['id']}")).status_code == 204
+    response = await auth_client.post("/planner/google/sync")
+    assert response.json()["deleted"] == 1
+    assert remote_task["id"] not in api.live()
