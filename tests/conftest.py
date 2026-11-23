@@ -21,6 +21,8 @@ os.environ["STORAGE_BACKEND"] = "local"
 os.environ["UPLOAD_DIR"] = tempfile.mkdtemp(prefix="aceso-test-uploads-")
 os.environ["STRAVA_CLIENT_ID"] = "test-client-id"
 os.environ["STRAVA_CLIENT_SECRET"] = "test-client-secret"
+os.environ["GOOGLE_CLIENT_ID"] = "test-google-client-id"
+os.environ["GOOGLE_CLIENT_SECRET"] = "test-google-client-secret"
 
 from fastapi import FastAPI  # noqa: E402
 from httpx import ASGITransport, AsyncClient  # noqa: E402

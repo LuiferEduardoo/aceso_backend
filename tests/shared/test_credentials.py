@@ -44,3 +44,18 @@ async def test_store_upserts_encrypted_payload(
 
         await store.delete(user.id, IntegrationProvider.STRAVA)
         assert await store.get(user.id, IntegrationProvider.STRAVA) is None
+
+
+async def test_store_accepts_google_provider(
+    sessionmaker: async_sessionmaker[AsyncSession],
+) -> None:
+    cipher = FernetCipher(Fernet.generate_key().decode())
+    async with sessionmaker() as session:
+        user = UserModel(email="g@example.com", password_hash="x")
+        session.add(user)
+        await session.flush()
+        store = SqlAlchemyCredentialStore(session, cipher)
+
+        await store.save(user.id, IntegrationProvider.GOOGLE, {"refresh_token": "g1"})
+        await session.commit()
+        assert await store.get(user.id, IntegrationProvider.GOOGLE) == {"refresh_token": "g1"}

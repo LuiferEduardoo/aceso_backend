@@ -5,6 +5,7 @@ from typing import Any, Protocol
 class IntegrationProvider(StrEnum):
     GARMIN = "garmin"
     STRAVA = "strava"
+    GOOGLE = "google"
 
 
 class CredentialStore(Protocol):

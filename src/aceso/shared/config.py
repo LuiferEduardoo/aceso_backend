@@ -29,6 +29,10 @@ class Settings(BaseSettings):
     strava_client_secret: str = ""
     strava_redirect_uri: str = "http://localhost:8000/running/strava/callback"
 
+    google_client_id: str = ""
+    google_client_secret: str = ""
+    google_redirect_uri: str = "http://localhost:8000/planner/google/callback"
+
 
 @lru_cache
 def get_settings() -> Settings:

@@ -34,7 +34,7 @@ class IntegrationCredentialModel(IdMixin, TimestampMixin, Base):
     __table_args__ = (
         # The (user_id, provider) unique index also serves the user_id foreign key.
         UniqueConstraint("user_id", "provider"),
-        CheckConstraint("provider IN ('garmin', 'strava')", name="provider"),
+        CheckConstraint("provider IN ('garmin', 'strava', 'google')", name="provider"),
     )
 
 
