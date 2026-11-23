@@ -204,3 +204,9 @@ class GoogleCalendarLinkRead(BaseModel):
 
     calendar_id: str
     last_synced_at: datetime | None
+
+
+class GoogleSyncResultRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    pulled: int = Field(description="Remote changes applied locally")

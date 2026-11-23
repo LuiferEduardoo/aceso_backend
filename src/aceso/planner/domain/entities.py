@@ -174,3 +174,35 @@ class GoogleCalendarLink:
     sync_token: str | None = None
     last_synced_at: datetime | None = None
     id: int | None = None
+
+
+ACESO_REF_KEY = "aceso_ref"
+
+
+@dataclass(slots=True, frozen=True)
+class RemoteEvent:
+    """An event as Google reports it. Cancelled events may carry only `id` and `status`."""
+
+    id: str
+    status: str = "confirmed"
+    updated: datetime | None = None
+    etag: str | None = None
+    title: str = ""
+    description: str | None = None
+    location: str | None = None
+    start_at: datetime | None = None
+    end_at: datetime | None = None
+    all_day: bool = False
+    aceso_ref: str | None = None
+    recurring_event_id: str | None = None
+
+    @property
+    def cancelled(self) -> bool:
+        return self.status == "cancelled"
+
+
+@dataclass(slots=True, frozen=True)
+class RemoteEventPage:
+    events: list[RemoteEvent]
+    next_page_token: str | None = None
+    next_sync_token: str | None = None

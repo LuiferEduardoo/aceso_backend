@@ -94,6 +94,34 @@ class SqlAlchemyCalendarEventRepository:
             await self._session.delete(model)
             await self._session.flush()
 
+    async def get_by_google_id(self, user_id: int, google_event_id: str) -> CalendarEvent | None:
+        return await self._one(
+            CalendarEventModel.user_id == user_id,
+            CalendarEventModel.google_event_id == google_event_id,
+        )
+
+    async def list_synced_between(
+        self, user_id: int, start: datetime, end: datetime
+    ) -> list[CalendarEvent]:
+        stmt = select(CalendarEventModel).where(
+            CalendarEventModel.user_id == user_id,
+            CalendarEventModel.deleted_at.is_(None),
+            CalendarEventModel.google_event_id.is_not(None),
+            CalendarEventModel.habit_id.is_(None),
+            CalendarEventModel.sync_pending.is_(False),
+            CalendarEventModel.start_at >= start,
+            CalendarEventModel.start_at < end,
+        )
+        return [_to_entity(m) for m in await self._session.scalars(stmt)]
+
+    async def habit_google_ids(self, user_id: int) -> set[str]:
+        stmt = select(CalendarEventModel.google_event_id).where(
+            CalendarEventModel.user_id == user_id,
+            CalendarEventModel.habit_id.is_not(None),
+            CalendarEventModel.google_event_id.is_not(None),
+        )
+        return {gid for gid in await self._session.scalars(stmt) if gid}
+
     async def reset_sync(self, user_id: int) -> None:
         await self._session.execute(
             delete(CalendarEventModel).where(

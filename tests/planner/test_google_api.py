@@ -6,7 +6,7 @@ from httpx import AsyncClient
 from aceso.planner.api.deps import get_google_gateway
 from aceso.planner.infrastructure.google_calendar import GoogleCalendarClient
 from tests.conftest import register_and_login
-from tests.planner.google_mock import FakeGoogleCalendarApi
+from tests.planner.google_mock import FakeGoogleCalendarApi, timed
 
 
 def use_fake_google(app: FastAPI, api: FakeGoogleCalendarApi) -> None:
@@ -73,3 +73,42 @@ async def test_google_callback_rejects_forged_state(auth_client: AsyncClient) ->
         "/planner/google/callback", params={"error": "access_denied", "state": "x"}
     )
     assert response.status_code == 422
+
+
+async def test_google_pull_into_agenda(app: FastAPI, auth_client: AsyncClient) -> None:
+    api = FakeGoogleCalendarApi()
+    use_fake_google(app, api)
+    assert (await auth_client.post("/planner/google/sync")).status_code == 404
+
+    await connect_google(auth_client)
+    api.add_remote(
+        "remote-1",
+        summary="Lunch with Ana",
+        location="Café",
+        **timed("2026-10-12T12:00:00Z", "2026-10-12T13:00:00Z"),
+    )
+
+    response = await auth_client.post("/planner/google/sync")
+    assert response.status_code == 200, response.text
+    assert response.json()["pulled"] == 1
+
+    response = await auth_client.get(
+        "/planner/agenda", params={"from": "2026-10-12", "to": "2026-10-12"}
+    )
+    [event] = response.json()[0]["events"]
+    assert event["source"] == "google" and event["title"] == "Lunch with Ana"
+
+    api.edit_remote("remote-1", summary="Lunch with Ana & Leo")
+    assert (await auth_client.post("/planner/google/sync")).json()["pulled"] == 1
+    response = await auth_client.get(f"/planner/events/{event['id']}")
+    assert response.json()["title"] == "Lunch with Ana & Leo"
+
+    other = await register_and_login(auth_client, "other@example.com")
+    assert (await auth_client.post("/planner/google/sync", headers=other)).status_code == 404
+    assert (
+        await auth_client.get(f"/planner/events/{event['id']}", headers=other)
+    ).status_code == 404
+
+    api.cancel_remote("remote-1")
+    await auth_client.post("/planner/google/sync")
+    assert (await auth_client.get(f"/planner/events/{event['id']}")).status_code == 404

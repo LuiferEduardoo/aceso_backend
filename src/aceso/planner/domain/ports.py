@@ -8,6 +8,7 @@ from aceso.planner.domain.entities import (
     Habit,
     HabitLog,
     OAuthTokens,
+    RemoteEventPage,
     Task,
     TaskStatus,
 )
@@ -84,6 +85,20 @@ class CalendarEventRepository(Protocol):
         """Remove the row for good."""
         ...
 
+    async def get_by_google_id(self, user_id: int, google_event_id: str) -> CalendarEvent | None:
+        """Live event or tombstone carrying that Google id."""
+        ...
+
+    async def list_synced_between(
+        self, user_id: int, start: datetime, end: datetime
+    ) -> list[CalendarEvent]:
+        """Live, already-synced (not pending) non-habit events starting in [start, end)."""
+        ...
+
+    async def habit_google_ids(self, user_id: int) -> set[str]:
+        """Google ids of the recurring events that mirror habits."""
+        ...
+
     async def reset_sync(self, user_id: int) -> None:
         """Forget Google state: drop Google-sourced events and tombstones, re-queue the rest."""
         ...
@@ -107,6 +122,19 @@ class GoogleCalendarGateway(Protocol):
     async def refresh(self, refresh_token: str) -> OAuthTokens: ...
 
     async def list_calendars(self, access_token: str) -> list[GoogleCalendar]: ...
+
+    async def list_events(
+        self,
+        access_token: str,
+        calendar_id: str,
+        *,
+        sync_token: str | None = None,
+        time_min: datetime | None = None,
+        time_max: datetime | None = None,
+        page_token: str | None = None,
+    ) -> RemoteEventPage:
+        """Raises SyncTokenExpiredError when Google invalidates `sync_token` (410)."""
+        ...
 
 
 class OAuthStateSigner(Protocol):

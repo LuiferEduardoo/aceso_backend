@@ -8,6 +8,7 @@ from aceso.planner.api.deps import (
     GoogleGatewayDep,
     GoogleLinkRepositoryDep,
     GoogleStateSignerDep,
+    TaskRepositoryDep,
 )
 from aceso.planner.api.schemas import (
     AuthorizationUrl,
@@ -15,6 +16,7 @@ from aceso.planner.api.schemas import (
     GoogleCalendarRead,
     GoogleCalendarSelect,
     GoogleConnected,
+    GoogleSyncResultRead,
 )
 from aceso.planner.application.google import (
     CompleteGoogleAuthorization,
@@ -23,6 +25,7 @@ from aceso.planner.application.google import (
     SelectGoogleCalendar,
     StartGoogleAuthorization,
 )
+from aceso.planner.application.google_sync import SyncGoogleCalendar
 from aceso.shared.api.deps import CredentialStoreDep
 from aceso.shared.domain.errors import InvalidOperationError
 
@@ -77,6 +80,19 @@ async def select_google_calendar(
         user_id, payload.calendar_id
     )
     return GoogleCalendarLinkRead.model_validate(link)
+
+
+@router.post("/sync", summary="Pull Google changes into the planner, then push local ones")
+async def google_sync(
+    user_id: CurrentUserIdDep,
+    gateway: GoogleGatewayDep,
+    credentials: CredentialStoreDep,
+    links: GoogleLinkRepositoryDep,
+    events: CalendarEventRepositoryDep,
+    tasks: TaskRepositoryDep,
+) -> GoogleSyncResultRead:
+    result = await SyncGoogleCalendar(gateway, credentials, links, events, tasks).execute(user_id)
+    return GoogleSyncResultRead.model_validate(result)
 
 
 @router.delete("", status_code=status.HTTP_204_NO_CONTENT)

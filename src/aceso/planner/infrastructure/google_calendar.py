@@ -1,18 +1,26 @@
 """Google Calendar API v3 adapter (OAuth2 + calendars + events)."""
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
 from urllib.parse import quote, urlencode
 
 import httpx
 
-from aceso.planner.domain.entities import GoogleCalendar, OAuthTokens
-from aceso.shared.domain.errors import IntegrationError, InvalidOperationError
+from aceso.planner.domain.entities import (
+    ACESO_REF_KEY,
+    GoogleCalendar,
+    OAuthTokens,
+    RemoteEvent,
+    RemoteEventPage,
+)
+from aceso.planner.domain.errors import SyncTokenExpiredError
+from aceso.shared.domain.errors import IntegrationError, InvalidOperationError, NotFoundError
 
 AUTHORIZE_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 TOKEN_URL = "https://oauth2.googleapis.com/token"
 API_URL = "https://www.googleapis.com/calendar/v3"
 SCOPE = "https://www.googleapis.com/auth/calendar"
+PAGE_SIZE = 250
 
 
 def _tokens(data: dict[str, Any]) -> OAuthTokens:
@@ -24,6 +32,38 @@ def _tokens(data: dict[str, Any]) -> OAuthTokens:
         )
     except (KeyError, TypeError, ValueError) as exc:
         raise IntegrationError("Unexpected token response from Google") from exc
+
+
+def _parse_time(value: dict[str, Any] | None) -> tuple[datetime | None, bool]:
+    """Google gives `dateTime` for timed events and `date` for all-day ones."""
+    if not value:
+        return None, False
+    if "dateTime" in value:
+        return datetime.fromisoformat(value["dateTime"]).astimezone(UTC), False
+    if "date" in value:
+        return datetime.combine(date.fromisoformat(value["date"]), time.min, tzinfo=UTC), True
+    return None, False
+
+
+def map_remote_event(data: dict[str, Any]) -> RemoteEvent:
+    start_at, all_day = _parse_time(data.get("start"))
+    end_at, _ = _parse_time(data.get("end"))
+    private = (data.get("extendedProperties") or {}).get("private") or {}
+    updated = data.get("updated")
+    return RemoteEvent(
+        id=data["id"],
+        status=data.get("status", "confirmed"),
+        updated=datetime.fromisoformat(updated) if updated else None,
+        etag=data.get("etag"),
+        title=(data.get("summary") or "")[:1000],
+        description=data.get("description"),
+        location=data.get("location"),
+        start_at=start_at,
+        end_at=end_at,
+        all_day=all_day,
+        aceso_ref=private.get(ACESO_REF_KEY),
+        recurring_event_id=data.get("recurringEventId"),
+    )
 
 
 def calendar_path(calendar_id: str) -> str:
@@ -106,6 +146,43 @@ class GoogleCalendarClient:
             page_token = data.get("nextPageToken")
             if not page_token:
                 return calendars
+
+    async def list_events(
+        self,
+        access_token: str,
+        calendar_id: str,
+        *,
+        sync_token: str | None = None,
+        time_min: datetime | None = None,
+        time_max: datetime | None = None,
+        page_token: str | None = None,
+    ) -> RemoteEventPage:
+        params: dict[str, Any] = {"singleEvents": "true", "maxResults": PAGE_SIZE}
+        if sync_token:
+            params["syncToken"] = sync_token
+        else:
+            if time_min is not None:
+                params["timeMin"] = time_min.isoformat()
+            if time_max is not None:
+                params["timeMax"] = time_max.isoformat()
+        if page_token:
+            params["pageToken"] = page_token
+        response = await self._send(
+            "GET",
+            f"{calendar_path(calendar_id)}/events",
+            access_token=access_token,
+            params=params,
+        )
+        if response.status_code == 410:
+            raise SyncTokenExpiredError("Google sync token expired; a full sync is needed")
+        if response.status_code == 404:
+            raise NotFoundError("Google calendar not found; choose another one")
+        data = self._check(response)
+        return RemoteEventPage(
+            events=[map_remote_event(item) for item in data.get("items", [])],
+            next_page_token=data.get("nextPageToken"),
+            next_sync_token=data.get("nextSyncToken"),
+        )
 
     async def _token_request(self, data: dict[str, str]) -> dict[str, Any]:
         self._require_config()

@@ -12,6 +12,7 @@ from aceso.planner.domain.ports import (
     GoogleCalendarGateway,
     GoogleCalendarLinkRepository,
     OAuthStateSigner,
+    TaskRepository,
 )
 from aceso.planner.infrastructure.event_repository import SqlAlchemyCalendarEventRepository
 from aceso.planner.infrastructure.google_calendar import GoogleCalendarClient
@@ -99,3 +100,10 @@ def get_google_link_repository(session: SessionDep) -> GoogleCalendarLinkReposit
 GoogleLinkRepositoryDep = Annotated[
     GoogleCalendarLinkRepository, Depends(get_google_link_repository)
 ]
+
+
+def get_task_repository(session: SessionDep) -> TaskRepository:
+    return SqlAlchemyTaskRepository(session)
+
+
+TaskRepositoryDep = Annotated[TaskRepository, Depends(get_task_repository)]
