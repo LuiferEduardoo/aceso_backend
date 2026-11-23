@@ -2,8 +2,9 @@ from collections.abc import Callable
 from datetime import UTC, date, datetime
 from typing import Any
 
-from aceso.planner.domain.entities import Task, TaskStatus
-from aceso.planner.domain.ports import TaskRepository
+from aceso.planner.application.calendar import discard_event
+from aceso.planner.domain.entities import CalendarEvent, Task, TaskStatus
+from aceso.planner.domain.ports import CalendarEventRepository, TaskRepository
 from aceso.shared.domain.errors import InvalidOperationError, NotFoundError
 
 TASK_FIELDS = {
@@ -29,8 +30,16 @@ def _validate_schedule(task: Task) -> None:
 
 
 class TaskService:
-    def __init__(self, tasks: TaskRepository, clock: Callable[[], datetime] = _utcnow) -> None:
+    """Task CRUD; a scheduled task owns a linked calendar event kept in step with it."""
+
+    def __init__(
+        self,
+        tasks: TaskRepository,
+        events: CalendarEventRepository,
+        clock: Callable[[], datetime] = _utcnow,
+    ) -> None:
         self._tasks = tasks
+        self._events = events
         self._clock = clock
 
     def _sync_completion(self, task: Task) -> None:
@@ -42,7 +51,9 @@ class TaskService:
     async def create(self, task: Task) -> Task:
         _validate_schedule(task)
         self._sync_completion(task)
-        return await self._save(task, created=True)
+        task = await self._tasks.add(task)
+        await self._sync_event(task)
+        return task
 
     async def list_filtered(
         self,
@@ -68,7 +79,9 @@ class TaskService:
                 setattr(task, name, value)
         _validate_schedule(task)
         self._sync_completion(task)
-        return await self._save(task)
+        task = await self._tasks.update(task)
+        await self._sync_event(task)
+        return task
 
     async def complete(self, user_id: int, task_id: int) -> Task:
         return await self.update(user_id, task_id, {"status": TaskStatus.DONE})
@@ -77,7 +90,33 @@ class TaskService:
         return await self.update(user_id, task_id, {"status": TaskStatus.TODO})
 
     async def delete(self, user_id: int, task_id: int) -> None:
-        await self._tasks.delete(await self.get(user_id, task_id))
+        task = await self.get(user_id, task_id)
+        assert task.id is not None
+        event = await self._events.get_by_task(user_id, task.id)
+        if event is not None:
+            await discard_event(self._events, event, self._clock())
+        await self._tasks.delete(task)
 
-    async def _save(self, task: Task, created: bool = False) -> Task:
-        return await (self._tasks.add(task) if created else self._tasks.update(task))
+    async def _sync_event(self, task: Task) -> None:
+        assert task.id is not None
+        event = await self._events.get_by_task(task.user_id, task.id)
+        if not task.is_scheduled:
+            if event is not None:
+                await discard_event(self._events, event, self._clock())
+            return
+        assert task.scheduled_start is not None and task.scheduled_end is not None
+        wanted = {
+            "title": task.title,
+            "description": task.notes,
+            "start_at": task.scheduled_start,
+            "end_at": task.scheduled_end,
+        }
+        if event is None:
+            await self._events.add(
+                CalendarEvent(user_id=task.user_id, task_id=task.id, sync_pending=True, **wanted)
+            )
+        elif any(getattr(event, k) != v for k, v in wanted.items()):
+            for name, value in wanted.items():
+                setattr(event, name, value)
+            event.sync_pending = True
+            await self._events.update(event)

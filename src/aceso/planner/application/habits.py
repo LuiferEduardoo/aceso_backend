@@ -4,6 +4,7 @@ from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from aceso.planner.application.habit_stats import HabitStats, compute_stats
+from aceso.planner.application.ranges import validate_range
 from aceso.planner.domain.entities import Habit, HabitFrequency, HabitLog
 from aceso.planner.domain.ports import HabitRepository
 from aceso.shared.domain.errors import InvalidOperationError, NotFoundError
@@ -22,18 +23,10 @@ HABIT_FIELDS = {
     "timezone",
     "sync_to_calendar",
 }
-MAX_RANGE_DAYS = 366
 
 
 def _utcnow() -> datetime:
     return datetime.now(UTC)
-
-
-def validate_range(start: date, end: date) -> None:
-    if end < start:
-        raise InvalidOperationError("'to' must be on or after 'from'")
-    if (end - start).days > MAX_RANGE_DAYS:
-        raise InvalidOperationError(f"Range cannot exceed {MAX_RANGE_DAYS} days")
 
 
 def _validate_habit(habit: Habit) -> None:

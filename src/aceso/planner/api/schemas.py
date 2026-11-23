@@ -4,7 +4,7 @@ from typing import Annotated
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
 from aceso.planner.application.habit_stats import StreakUnit
-from aceso.planner.domain.entities import HabitFrequency, TaskPriority, TaskStatus
+from aceso.planner.domain.entities import EventSource, HabitFrequency, TaskPriority, TaskStatus
 
 Weekday = Annotated[int, Field(ge=0, le=6, description="0=Monday .. 6=Sunday")]
 
@@ -121,3 +121,57 @@ class TaskRead(BaseModel):
     completed_at: datetime | None
     created_at: datetime
     updated_at: datetime
+
+
+class CalendarEventCreate(BaseModel):
+    title: str = Field(min_length=1, max_length=1000)
+    description: str | None = None
+    location: str | None = None
+    start_at: AwareDatetime
+    end_at: AwareDatetime
+    all_day: bool = Field(default=False, description="Spans whole UTC days")
+
+
+class CalendarEventUpdate(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=1000)
+    description: str | None = None
+    location: str | None = None
+    start_at: AwareDatetime | None = None
+    end_at: AwareDatetime | None = None
+    all_day: bool | None = None
+
+
+class CalendarEventRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    title: str
+    description: str | None
+    location: str | None
+    start_at: datetime
+    end_at: datetime
+    all_day: bool
+    source: EventSource
+    task_id: int | None
+    habit_id: int | None
+    google_event_id: str | None
+    sync_pending: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class AgendaHabitRead(BaseModel):
+    habit_id: int
+    name: str
+    time_of_day: time | None
+    duration_min: int | None
+    target_count: int
+    count: int
+    completed: bool
+
+
+class AgendaDayRead(BaseModel):
+    date: date
+    events: list[CalendarEventRead]
+    tasks: list[TaskRead]
+    habits: list[AgendaHabitRead]

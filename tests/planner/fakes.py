@@ -1,7 +1,7 @@
 from copy import deepcopy
 from datetime import UTC, date, datetime
 
-from aceso.planner.domain.entities import Habit, HabitLog, Task, TaskStatus
+from aceso.planner.domain.entities import CalendarEvent, Habit, HabitLog, Task, TaskStatus
 
 
 class FakeHabitRepository:
@@ -115,6 +115,24 @@ class FakeTaskRepository:
             and (due_to is None or (t.due_date is not None and t.due_date <= due_to))
         ]
 
+    async def list_between(
+        self, user_id: int, start: date, end: date, start_at: datetime, end_at: datetime
+    ) -> list[Task]:
+        return [
+            deepcopy(t)
+            for t in self.tasks.values()
+            if t.user_id == user_id
+            and (
+                (t.due_date is not None and start <= t.due_date <= end)
+                or (
+                    t.scheduled_start is not None
+                    and t.scheduled_end is not None
+                    and t.scheduled_start < end_at
+                    and t.scheduled_end > start_at
+                )
+            )
+        ]
+
     async def update(self, task: Task) -> Task:
         assert task.id is not None
         task = deepcopy(task)
@@ -125,3 +143,44 @@ class FakeTaskRepository:
     async def delete(self, task: Task) -> None:
         assert task.id is not None
         self.tasks.pop(task.id, None)
+
+
+class FakeCalendarEventRepository:
+    def __init__(self) -> None:
+        self.events: dict[int, CalendarEvent] = {}
+        self._id = 0
+
+    def live(self, user_id: int) -> list[CalendarEvent]:
+        return [e for e in self.events.values() if e.user_id == user_id and e.deleted_at is None]
+
+    async def add(self, event: CalendarEvent) -> CalendarEvent:
+        event = deepcopy(event)
+        self._id += 1
+        event.id = self._id
+        event.created_at = event.updated_at = datetime.now(UTC)
+        self.events[event.id] = event
+        return deepcopy(event)
+
+    async def get(self, user_id: int, event_id: int) -> CalendarEvent | None:
+        event = self.events.get(event_id)
+        if event is None or event.user_id != user_id or event.deleted_at is not None:
+            return None
+        return deepcopy(event)
+
+    async def get_by_task(self, user_id: int, task_id: int) -> CalendarEvent | None:
+        return next((deepcopy(e) for e in self.live(user_id) if e.task_id == task_id), None)
+
+    async def list_range(self, user_id: int, start: datetime, end: datetime) -> list[CalendarEvent]:
+        found = [deepcopy(e) for e in self.live(user_id) if e.overlaps(start, end)]
+        return sorted(found, key=lambda e: e.start_at)
+
+    async def update(self, event: CalendarEvent) -> CalendarEvent:
+        assert event.id is not None
+        event = deepcopy(event)
+        event.updated_at = datetime.now(UTC)
+        self.events[event.id] = event
+        return deepcopy(event)
+
+    async def delete(self, event: CalendarEvent) -> None:
+        assert event.id is not None
+        self.events.pop(event.id, None)

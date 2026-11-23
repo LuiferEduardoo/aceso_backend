@@ -87,3 +87,39 @@ class Task:
     @property
     def is_scheduled(self) -> bool:
         return self.scheduled_start is not None and self.scheduled_end is not None
+
+
+class EventSource(StrEnum):
+    LOCAL = "local"
+    GOOGLE = "google"
+
+
+@dataclass(slots=True)
+class CalendarEvent:
+    """A calendar entry. `deleted_at` marks a tombstone kept until Google learns of it."""
+
+    user_id: int
+    title: str
+    start_at: datetime
+    end_at: datetime
+    all_day: bool = False
+    description: str | None = None
+    location: str | None = None
+    source: EventSource = EventSource.LOCAL
+    task_id: int | None = None
+    habit_id: int | None = None
+    google_event_id: str | None = None
+    etag: str | None = None
+    remote_updated_at: datetime | None = None
+    sync_pending: bool = True
+    deleted_at: datetime | None = None
+    id: int | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+    @property
+    def is_linked(self) -> bool:
+        return self.task_id is not None or self.habit_id is not None
+
+    def overlaps(self, start: datetime, end: datetime) -> bool:
+        return self.start_at < end and self.end_at > start

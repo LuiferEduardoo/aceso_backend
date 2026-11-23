@@ -5,6 +5,7 @@ from aceso.gym.api.routines import router as gym_routines_router
 from aceso.gym.api.sessions import session_exercises_router, sessions_router, sets_router
 from aceso.health.api.router import router as health_router
 from aceso.identity.api.router import router as auth_router
+from aceso.planner.api.calendar import agenda_router, events_router
 from aceso.planner.api.habits import router as planner_habits_router
 from aceso.planner.api.tasks import router as planner_tasks_router
 from aceso.running.api.plans import planned_runs_router, plans_router
@@ -28,6 +29,8 @@ def create_app() -> FastAPI:
     app.include_router(activities_router)
     app.include_router(planner_habits_router)
     app.include_router(planner_tasks_router)
+    app.include_router(events_router)
+    app.include_router(agenda_router)
 
     @app.get("/healthz", tags=["system"])
     async def health_check() -> dict[str, str]:

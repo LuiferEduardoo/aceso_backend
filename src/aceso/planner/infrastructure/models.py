@@ -14,11 +14,17 @@ from sqlalchemy import (
     Time,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, mapped_column
 
-from aceso.planner.domain.entities import HabitFrequency, TaskPriority, TaskStatus
+from aceso.planner.domain.entities import (
+    EventSource,
+    HabitFrequency,
+    TaskPriority,
+    TaskStatus,
+)
 from aceso.shared.infrastructure.db import Base, IdMixin, TimestampMixin
 
 
@@ -116,4 +122,59 @@ class TaskModel(IdMixin, TimestampMixin, Base):
             "scheduled_end IS NULL OR scheduled_end > scheduled_start", name="schedule_order"
         ),
         CheckConstraint("(status = 'done') = (completed_at IS NOT NULL)", name="completed_at"),
+    )
+
+
+class CalendarEventModel(IdMixin, TimestampMixin, Base):
+    __tablename__ = "calendar_events"
+
+    user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"))
+    title: Mapped[str] = mapped_column(Text)
+    description: Mapped[str | None] = mapped_column(Text)
+    location: Mapped[str | None] = mapped_column(Text)
+    start_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    end_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    all_day: Mapped[bool] = mapped_column(Boolean, server_default="false")
+    source: Mapped[str] = mapped_column(Text, server_default="local")
+    # Tombstones outlive their task/habit, hence SET NULL.
+    task_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("tasks.id", ondelete="SET NULL"), index=True
+    )
+    habit_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("habits.id", ondelete="SET NULL"), index=True
+    )
+    google_event_id: Mapped[str | None] = mapped_column(Text)
+    etag: Mapped[str | None] = mapped_column(Text)
+    remote_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    sync_pending: Mapped[bool] = mapped_column(Boolean, server_default="true")
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), sort_order=11
+    )
+
+    __table_args__ = (
+        # (user_id, start_at) also serves the user_id foreign key.
+        Index("ix_calendar_events_user_id_start_at", "user_id", "start_at"),
+        Index(
+            "uq_calendar_events_user_id_google_event_id",
+            "user_id",
+            "google_event_id",
+            unique=True,
+            postgresql_where=text("google_event_id IS NOT NULL"),
+        ),
+        Index(
+            "uq_calendar_events_live_task_id",
+            "task_id",
+            unique=True,
+            postgresql_where=text("task_id IS NOT NULL AND deleted_at IS NULL"),
+        ),
+        Index(
+            "uq_calendar_events_live_habit_id",
+            "habit_id",
+            unique=True,
+            postgresql_where=text("habit_id IS NOT NULL AND deleted_at IS NULL"),
+        ),
+        CheckConstraint("length(title) <= 1000", name="title_length"),
+        CheckConstraint(f"source IN ({_sql_values(EventSource)})", name="source"),
+        CheckConstraint("end_at > start_at", name="end_after_start"),
     )

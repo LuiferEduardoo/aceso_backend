@@ -1,6 +1,6 @@
-from datetime import date
+from datetime import date, datetime
 
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from aceso.planner.domain.entities import Task, TaskPriority, TaskStatus
@@ -66,6 +66,22 @@ class SqlAlchemyTaskRepository:
         if due_to is not None:
             stmt = stmt.where(TaskModel.due_date <= due_to)
         stmt = stmt.order_by(TaskModel.due_date.asc().nulls_last(), TaskModel.id)
+        return [to_task_entity(m) for m in await self._session.scalars(stmt)]
+
+    async def list_between(
+        self, user_id: int, start: date, end: date, start_at: datetime, end_at: datetime
+    ) -> list[Task]:
+        stmt = (
+            select(TaskModel)
+            .where(
+                TaskModel.user_id == user_id,
+                or_(
+                    TaskModel.due_date.between(start, end),
+                    and_(TaskModel.scheduled_start < end_at, TaskModel.scheduled_end > start_at),
+                ),
+            )
+            .order_by(TaskModel.scheduled_start.asc().nulls_last(), TaskModel.id)
+        )
         return [to_task_entity(m) for m in await self._session.scalars(stmt)]
 
     async def update(self, task: Task) -> Task:

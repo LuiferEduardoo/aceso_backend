@@ -1,7 +1,7 @@
-from datetime import date
+from datetime import date, datetime
 from typing import Protocol
 
-from aceso.planner.domain.entities import Habit, HabitLog, Task, TaskStatus
+from aceso.planner.domain.entities import CalendarEvent, Habit, HabitLog, Task, TaskStatus
 
 
 class HabitRepository(Protocol):
@@ -45,6 +45,32 @@ class TaskRepository(Protocol):
         due_to: date | None = None,
     ) -> list[Task]: ...
 
+    async def list_between(
+        self, user_id: int, start: date, end: date, start_at: datetime, end_at: datetime
+    ) -> list[Task]:
+        """Tasks due within [start, end] or scheduled overlapping [start_at, end_at)."""
+        ...
+
     async def update(self, task: Task) -> Task: ...
 
     async def delete(self, task: Task) -> None: ...
+
+
+class CalendarEventRepository(Protocol):
+    async def add(self, event: CalendarEvent) -> CalendarEvent: ...
+
+    async def get(self, user_id: int, event_id: int) -> CalendarEvent | None:
+        """A live (not deleted) event."""
+        ...
+
+    async def get_by_task(self, user_id: int, task_id: int) -> CalendarEvent | None: ...
+
+    async def list_range(self, user_id: int, start: datetime, end: datetime) -> list[CalendarEvent]:
+        """Live events overlapping [start, end), ordered by start."""
+        ...
+
+    async def update(self, event: CalendarEvent) -> CalendarEvent: ...
+
+    async def delete(self, event: CalendarEvent) -> None:
+        """Remove the row for good."""
+        ...
