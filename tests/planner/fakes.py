@@ -1,7 +1,7 @@
 from copy import deepcopy
 from datetime import UTC, date, datetime
 
-from aceso.planner.domain.entities import Habit, HabitLog
+from aceso.planner.domain.entities import Habit, HabitLog, Task, TaskStatus
 
 
 class FakeHabitRepository:
@@ -80,3 +80,48 @@ class FakeHabitRepository:
             ),
             key=lambda log: (log.day, log.habit_id),
         )
+
+
+class FakeTaskRepository:
+    def __init__(self) -> None:
+        self.tasks: dict[int, Task] = {}
+        self._id = 0
+
+    async def add(self, task: Task) -> Task:
+        task = deepcopy(task)
+        self._id += 1
+        task.id = self._id
+        task.created_at = task.updated_at = datetime.now(UTC)
+        self.tasks[task.id] = task
+        return deepcopy(task)
+
+    async def get(self, user_id: int, task_id: int) -> Task | None:
+        task = self.tasks.get(task_id)
+        return deepcopy(task) if task and task.user_id == user_id else None
+
+    async def list_filtered(
+        self,
+        user_id: int,
+        status: TaskStatus | None = None,
+        due_from: date | None = None,
+        due_to: date | None = None,
+    ) -> list[Task]:
+        return [
+            deepcopy(t)
+            for t in self.tasks.values()
+            if t.user_id == user_id
+            and (status is None or t.status == status)
+            and (due_from is None or (t.due_date is not None and t.due_date >= due_from))
+            and (due_to is None or (t.due_date is not None and t.due_date <= due_to))
+        ]
+
+    async def update(self, task: Task) -> Task:
+        assert task.id is not None
+        task = deepcopy(task)
+        task.updated_at = datetime.now(UTC)
+        self.tasks[task.id] = task
+        return deepcopy(task)
+
+    async def delete(self, task: Task) -> None:
+        assert task.id is not None
+        self.tasks.pop(task.id, None)

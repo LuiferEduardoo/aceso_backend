@@ -1,9 +1,10 @@
 from datetime import date
-from typing import Annotated, Any
+from typing import Annotated
 
-from fastapi import APIRouter, Path, Query, status
+from fastapi import APIRouter, Query, status
 
 from aceso.identity.api.deps import CurrentUserIdDep
+from aceso.planner.api.common import ResourceId, reject_nulls
 from aceso.planner.api.deps import HabitServiceDep, HabitTrackingDep
 from aceso.planner.api.schemas import (
     HabitCreate,
@@ -14,17 +15,8 @@ from aceso.planner.api.schemas import (
     HabitUpdate,
 )
 from aceso.planner.domain.entities import Habit
-from aceso.shared.domain.errors import InvalidOperationError
 
 router = APIRouter(prefix="/planner/habits", tags=["planner"])
-
-ResourceId = Annotated[int, Path(ge=1)]
-
-
-def reject_nulls(changes: dict[str, Any], *fields: str) -> None:
-    for name in fields:
-        if name in changes and changes[name] is None:
-            raise InvalidOperationError(f"{name} cannot be null")
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)

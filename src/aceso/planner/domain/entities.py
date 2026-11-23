@@ -54,3 +54,36 @@ class HabitLog:
 
     def meets(self, habit: Habit) -> bool:
         return self.count >= habit.target_count
+
+
+class TaskStatus(StrEnum):
+    TODO = "todo"
+    IN_PROGRESS = "in_progress"
+    DONE = "done"
+    CANCELLED = "cancelled"
+
+
+class TaskPriority(StrEnum):
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+
+
+@dataclass(slots=True)
+class Task:
+    user_id: int
+    title: str
+    notes: str | None = None
+    status: TaskStatus = TaskStatus.TODO
+    priority: TaskPriority = TaskPriority.MEDIUM
+    due_date: date | None = None
+    scheduled_start: datetime | None = None
+    scheduled_end: datetime | None = None
+    completed_at: datetime | None = None
+    id: int | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+    @property
+    def is_scheduled(self) -> bool:
+        return self.scheduled_start is not None and self.scheduled_end is not None

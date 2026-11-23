@@ -1,10 +1,10 @@
 from datetime import date, datetime, time
 from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
 from aceso.planner.application.habit_stats import StreakUnit
-from aceso.planner.domain.entities import HabitFrequency
+from aceso.planner.domain.entities import HabitFrequency, TaskPriority, TaskStatus
 
 Weekday = Annotated[int, Field(ge=0, le=6, description="0=Monday .. 6=Sunday")]
 
@@ -85,3 +85,39 @@ class HabitStatsRead(BaseModel):
     completed: int
     expected: int
     completion_rate: float
+
+
+class TaskCreate(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+    notes: str | None = None
+    status: TaskStatus = TaskStatus.TODO
+    priority: TaskPriority = TaskPriority.MEDIUM
+    due_date: date | None = None
+    scheduled_start: AwareDatetime | None = None
+    scheduled_end: AwareDatetime | None = None
+
+
+class TaskUpdate(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=200)
+    notes: str | None = None
+    status: TaskStatus | None = None
+    priority: TaskPriority | None = None
+    due_date: date | None = None
+    scheduled_start: AwareDatetime | None = None
+    scheduled_end: AwareDatetime | None = None
+
+
+class TaskRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    title: str
+    notes: str | None
+    status: TaskStatus
+    priority: TaskPriority
+    due_date: date | None
+    scheduled_start: datetime | None
+    scheduled_end: datetime | None
+    completed_at: datetime | None
+    created_at: datetime
+    updated_at: datetime

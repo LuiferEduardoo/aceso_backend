@@ -7,6 +7,7 @@ from sqlalchemy import (
     Date,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     SmallInteger,
     Text,
@@ -17,7 +18,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, mapped_column
 
-from aceso.planner.domain.entities import HabitFrequency
+from aceso.planner.domain.entities import HabitFrequency, TaskPriority, TaskStatus
 from aceso.shared.infrastructure.db import Base, IdMixin, TimestampMixin
 
 
@@ -82,4 +83,37 @@ class HabitLogModel(IdMixin, TimestampMixin, Base):
         # The (habit_id, day) unique index also serves the habit_id foreign key.
         UniqueConstraint("habit_id", "day"),
         CheckConstraint("count >= 1", name="count"),
+    )
+
+
+class TaskModel(IdMixin, TimestampMixin, Base):
+    __tablename__ = "tasks"
+
+    user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"))
+    title: Mapped[str] = mapped_column(Text)
+    notes: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text, server_default="todo")
+    priority: Mapped[str] = mapped_column(Text, server_default="medium")
+    due_date: Mapped[date | None] = mapped_column(Date)
+    scheduled_start: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    scheduled_end: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), sort_order=11
+    )
+
+    __table_args__ = (
+        # (user_id, due_date) also serves the user_id foreign key.
+        Index("ix_tasks_user_id_due_date", "user_id", "due_date"),
+        Index("ix_tasks_user_id_scheduled_start", "user_id", "scheduled_start"),
+        CheckConstraint("length(title) BETWEEN 1 AND 200", name="title_length"),
+        CheckConstraint(f"status IN ({_sql_values(TaskStatus)})", name="status"),
+        CheckConstraint(f"priority IN ({_sql_values(TaskPriority)})", name="priority"),
+        CheckConstraint(
+            "(scheduled_start IS NULL) = (scheduled_end IS NULL)", name="schedule_pair"
+        ),
+        CheckConstraint(
+            "scheduled_end IS NULL OR scheduled_end > scheduled_start", name="schedule_order"
+        ),
+        CheckConstraint("(status = 'done') = (completed_at IS NOT NULL)", name="completed_at"),
     )

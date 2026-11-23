@@ -1,7 +1,7 @@
 from datetime import date
 from typing import Protocol
 
-from aceso.planner.domain.entities import Habit, HabitLog
+from aceso.planner.domain.entities import Habit, HabitLog, Task, TaskStatus
 
 
 class HabitRepository(Protocol):
@@ -30,3 +30,21 @@ class HabitRepository(Protocol):
         ...
 
     async def list_user_logs(self, user_id: int, start: date, end: date) -> list[HabitLog]: ...
+
+
+class TaskRepository(Protocol):
+    async def add(self, task: Task) -> Task: ...
+
+    async def get(self, user_id: int, task_id: int) -> Task | None: ...
+
+    async def list_filtered(
+        self,
+        user_id: int,
+        status: TaskStatus | None = None,
+        due_from: date | None = None,
+        due_to: date | None = None,
+    ) -> list[Task]: ...
+
+    async def update(self, task: Task) -> Task: ...
+
+    async def delete(self, task: Task) -> None: ...
