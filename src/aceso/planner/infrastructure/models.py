@@ -1,0 +1,85 @@
+from datetime import date, datetime, time
+
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    CheckConstraint,
+    Date,
+    DateTime,
+    ForeignKey,
+    Integer,
+    SmallInteger,
+    Text,
+    Time,
+    UniqueConstraint,
+    func,
+)
+from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy.orm import Mapped, mapped_column
+
+from aceso.planner.domain.entities import HabitFrequency
+from aceso.shared.infrastructure.db import Base, IdMixin, TimestampMixin
+
+
+def _sql_values(enum: type) -> str:
+    return ", ".join(f"'{member.value}'" for member in enum)
+
+
+class HabitModel(IdMixin, TimestampMixin, Base):
+    __tablename__ = "habits"
+
+    user_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    name: Mapped[str] = mapped_column(Text)
+    description: Mapped[str | None] = mapped_column(Text)
+    frequency: Mapped[str] = mapped_column(Text)
+    weekdays: Mapped[list[int]] = mapped_column(ARRAY(SmallInteger), server_default="{}")
+    times_per_week: Mapped[int | None] = mapped_column(SmallInteger)
+    target_count: Mapped[int] = mapped_column(Integer, server_default="1")
+    unit: Mapped[str | None] = mapped_column(Text)
+    start_date: Mapped[date] = mapped_column(Date)
+    time_of_day: Mapped[time | None] = mapped_column(Time)
+    duration_min: Mapped[int | None] = mapped_column(Integer)
+    timezone: Mapped[str] = mapped_column(Text, server_default="UTC")
+    sync_to_calendar: Mapped[bool] = mapped_column(Boolean, server_default="false")
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), sort_order=11
+    )
+
+    __table_args__ = (
+        CheckConstraint("length(name) BETWEEN 1 AND 100", name="name_length"),
+        CheckConstraint(f"frequency IN ({_sql_values(HabitFrequency)})", name="frequency"),
+        CheckConstraint(
+            "weekdays <@ ARRAY[0, 1, 2, 3, 4, 5, 6]::smallint[]", name="weekdays_range"
+        ),
+        CheckConstraint(
+            "frequency <> 'weekdays' OR cardinality(weekdays) > 0", name="weekdays_required"
+        ),
+        CheckConstraint(
+            "(frequency = 'times_per_week') = (times_per_week IS NOT NULL)",
+            name="times_per_week_required",
+        ),
+        CheckConstraint(
+            "times_per_week IS NULL OR times_per_week BETWEEN 1 AND 7", name="times_per_week"
+        ),
+        CheckConstraint("target_count >= 1", name="target_count"),
+        CheckConstraint("duration_min IS NULL OR duration_min > 0", name="duration_min"),
+        CheckConstraint("NOT sync_to_calendar OR time_of_day IS NOT NULL", name="sync_needs_time"),
+    )
+
+
+class HabitLogModel(IdMixin, TimestampMixin, Base):
+    __tablename__ = "habit_logs"
+
+    habit_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("habits.id", ondelete="CASCADE"))
+    day: Mapped[date] = mapped_column(Date)
+    count: Mapped[int] = mapped_column(Integer, server_default="1")
+    note: Mapped[str | None] = mapped_column(Text)
+
+    __table_args__ = (
+        # The (habit_id, day) unique index also serves the habit_id foreign key.
+        UniqueConstraint("habit_id", "day"),
+        CheckConstraint("count >= 1", name="count"),
+    )

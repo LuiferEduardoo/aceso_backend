@@ -1,0 +1,87 @@
+from datetime import date, datetime, time
+from typing import Annotated
+
+from pydantic import BaseModel, ConfigDict, Field
+
+from aceso.planner.application.habit_stats import StreakUnit
+from aceso.planner.domain.entities import HabitFrequency
+
+Weekday = Annotated[int, Field(ge=0, le=6, description="0=Monday .. 6=Sunday")]
+
+
+class HabitCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    description: str | None = None
+    frequency: HabitFrequency = HabitFrequency.DAILY
+    weekdays: list[Weekday] = Field(default=[], description="Required for 'weekdays'")
+    times_per_week: int | None = Field(
+        default=None, ge=1, le=7, description="Required for 'times_per_week'"
+    )
+    target_count: int = Field(default=1, ge=1, description="Count needed to complete a day")
+    unit: str | None = None
+    start_date: date
+    time_of_day: time | None = None
+    duration_min: int | None = Field(default=None, gt=0)
+    timezone: str = Field(default="UTC", description="IANA zone used for time_of_day")
+    sync_to_calendar: bool = False
+
+
+class HabitUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    description: str | None = None
+    frequency: HabitFrequency | None = None
+    weekdays: list[Weekday] | None = None
+    times_per_week: int | None = Field(default=None, ge=1, le=7)
+    target_count: int | None = Field(default=None, ge=1)
+    unit: str | None = None
+    start_date: date | None = None
+    time_of_day: time | None = None
+    duration_min: int | None = Field(default=None, gt=0)
+    timezone: str | None = None
+    sync_to_calendar: bool | None = None
+
+
+class HabitRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    description: str | None
+    frequency: HabitFrequency
+    weekdays: list[int]
+    times_per_week: int | None
+    target_count: int
+    unit: str | None
+    start_date: date
+    time_of_day: time | None
+    duration_min: int | None
+    timezone: str
+    sync_to_calendar: bool
+    archived_at: datetime | None
+    created_at: datetime
+
+
+class HabitLogIn(BaseModel):
+    count: int = Field(default=1, ge=1)
+    note: str | None = None
+
+
+class HabitLogRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    habit_id: int
+    day: date
+    count: int
+    note: str | None
+
+
+class HabitStatsRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    streak_unit: StreakUnit
+    current_streak: int
+    best_streak: int
+    completed: int
+    expected: int
+    completion_rate: float
