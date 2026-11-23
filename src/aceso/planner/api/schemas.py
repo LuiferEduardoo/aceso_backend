@@ -190,8 +190,12 @@ class AuthorizationUrl(BaseModel):
     authorization_url: str
 
 
-class GoogleConnected(BaseModel):
-    status: str = "connected"
+class GoogleStatusRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    connected: bool = Field(description="Whether the user has Google credentials stored")
+    calendar_id: str | None = Field(description="Calendar the planner syncs with")
+    last_synced_at: datetime | None = Field(description="When the last successful sync ran")
 
 
 class GoogleCalendarRead(BaseModel):

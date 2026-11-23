@@ -35,6 +35,9 @@ class Settings(BaseSettings):
     google_client_secret: str = ""
     google_redirect_uri: str = "http://localhost:8000/planner/google/callback"
 
+    # Web app the browser returns to after OAuth callbacks (no trailing slash needed).
+    frontend_url: str = "http://localhost:5173"
+
     # IANA zone that defines "calendar days" (agenda, ranges, all-day events, "today").
     timezone: str = "America/Bogota"
 

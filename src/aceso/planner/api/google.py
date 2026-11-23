@@ -1,6 +1,9 @@
+import logging
 from typing import Annotated
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, Query, status
+from fastapi.responses import RedirectResponse
 
 from aceso.identity.api.deps import CurrentUserIdDep
 from aceso.planner.api.deps import (
@@ -17,21 +20,41 @@ from aceso.planner.api.schemas import (
     GoogleCalendarLinkRead,
     GoogleCalendarRead,
     GoogleCalendarSelect,
-    GoogleConnected,
+    GoogleStatusRead,
     GoogleSyncResultRead,
 )
 from aceso.planner.application.google import (
     CompleteGoogleAuthorization,
     DisconnectGoogle,
+    GetGoogleStatus,
     ListGoogleCalendars,
     SelectGoogleCalendar,
     StartGoogleAuthorization,
 )
 from aceso.planner.application.google_sync import SyncGoogleCalendar
-from aceso.shared.api.deps import CredentialStoreDep
-from aceso.shared.domain.errors import InvalidOperationError
+from aceso.planner.domain.errors import GoogleScopeNotGrantedError
+from aceso.shared.api.deps import CredentialStoreDep, SettingsDep
+from aceso.shared.domain.errors import AuthenticationError, DomainError
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/planner/google", tags=["planner"])
+
+AGENDA_PATH = "/planner/agenda"
+
+
+def _agenda_redirect(frontend_url: str, **params: str) -> RedirectResponse:
+    """Send the browser back to the agenda; only fixed codes ever reach the query string."""
+    url = f"{frontend_url.rstrip('/')}{AGENDA_PATH}?{urlencode(params)}"
+    return RedirectResponse(url, status_code=status.HTTP_303_SEE_OTHER)
+
+
+def _failure_reason(exc: DomainError) -> str:
+    if isinstance(exc, AuthenticationError):
+        return "invalid_state"
+    if isinstance(exc, GoogleScopeNotGrantedError):
+        return "missing_scope"
+    return "exchange_failed"
 
 
 @router.get("/authorize", summary="URL to send the user to for Google Calendar consent")
@@ -42,23 +65,53 @@ async def google_authorize(
     return AuthorizationUrl(authorization_url=url)
 
 
-@router.get("/callback", summary="Google redirect target; the signed `state` identifies the user")
+@router.get(
+    "/callback",
+    summary="Google redirect target; the signed `state` identifies the user",
+    description=(
+        "Redirects (303) to `{FRONTEND_URL}/planner/agenda?google=connected`, or to "
+        "`?google=error&reason=<code>` with `access_denied`, `authorization_failed`, "
+        "`invalid_state`, `missing_scope` or `exchange_failed`."
+    ),
+    response_class=RedirectResponse,
+    status_code=status.HTTP_303_SEE_OTHER,
+)
 async def google_callback(
     gateway: GoogleGatewayDep,
     states: GoogleStateSignerDep,
     credentials: CredentialStoreDep,
     links: GoogleLinkRepositoryDep,
-    state: Annotated[str, Query()],
+    settings: SettingsDep,
+    state: Annotated[str | None, Query()] = None,
     code: Annotated[str | None, Query()] = None,
     scope: Annotated[str | None, Query()] = None,
     error: Annotated[str | None, Query()] = None,
-) -> GoogleConnected:
-    if error or not code:
-        raise InvalidOperationError(f"Google authorization failed: {error or 'missing code'}")
-    await CompleteGoogleAuthorization(gateway, states, credentials, links).execute(
-        code, state, scope
-    )
-    return GoogleConnected()
+) -> RedirectResponse:
+    frontend_url = settings.frontend_url
+    if error:
+        reason = "access_denied" if error == "access_denied" else "authorization_failed"
+        return _agenda_redirect(frontend_url, google="error", reason=reason)
+    if not state:
+        return _agenda_redirect(frontend_url, google="error", reason="invalid_state")
+    if not code:
+        return _agenda_redirect(frontend_url, google="error", reason="authorization_failed")
+    try:
+        await CompleteGoogleAuthorization(gateway, states, credentials, links).execute(
+            code, state, scope
+        )
+    except DomainError as exc:
+        reason = _failure_reason(exc)
+        logger.warning("Google authorization failed (%s): %s", reason, type(exc).__name__)
+        return _agenda_redirect(frontend_url, google="error", reason=reason)
+    return _agenda_redirect(frontend_url, google="connected")
+
+
+@router.get("/status", summary="Whether Google is connected and which calendar is synced")
+async def google_status(
+    user_id: CurrentUserIdDep, credentials: CredentialStoreDep, links: GoogleLinkRepositoryDep
+) -> GoogleStatusRead:
+    result = await GetGoogleStatus(credentials, links).execute(user_id)
+    return GoogleStatusRead.model_validate(result)
 
 
 @router.get("/calendars", summary="Calendars of the connected Google account")

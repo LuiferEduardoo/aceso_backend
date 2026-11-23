@@ -23,6 +23,7 @@ os.environ["STRAVA_CLIENT_ID"] = "test-client-id"
 os.environ["STRAVA_CLIENT_SECRET"] = "test-client-secret"
 os.environ["GOOGLE_CLIENT_ID"] = "test-google-client-id"
 os.environ["GOOGLE_CLIENT_SECRET"] = "test-google-client-secret"
+os.environ["FRONTEND_URL"] = "http://frontend.test"
 
 from fastapi import FastAPI  # noqa: E402
 from httpx import ASGITransport, AsyncClient  # noqa: E402

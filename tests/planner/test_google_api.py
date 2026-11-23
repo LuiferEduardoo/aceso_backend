@@ -1,12 +1,15 @@
 from urllib.parse import parse_qs, urlparse
 
 from fastapi import FastAPI
-from httpx import AsyncClient
+from httpx import AsyncClient, Response
 
 from aceso.planner.api.deps import get_google_gateway
 from aceso.planner.infrastructure.google_calendar import GoogleCalendarClient
 from tests.conftest import register_and_login
 from tests.planner.google_mock import FakeGoogleCalendarApi, timed
+
+FRONTEND = "http://frontend.test"
+CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar"
 
 
 def use_fake_google(app: FastAPI, api: FakeGoogleCalendarApi) -> None:
@@ -23,10 +26,21 @@ async def connect_google(client: AsyncClient, headers: dict[str, str] | None = N
     # The callback is a browser redirect: no Authorization header, the state identifies the user.
     response = await client.get(
         "/planner/google/callback",
-        params={"code": "abc", "state": state, "scope": "https://www.googleapis.com/auth/calendar"},
+        params={"code": "abc", "state": state, "scope": CALENDAR_SCOPE},
         headers={"Authorization": ""},
     )
-    assert response.status_code == 200, response.text
+    assert response.status_code == 303, response.text
+    assert response.headers["location"] == f"{FRONTEND}/planner/agenda?google=connected"
+
+
+def _redirect_reason(response: Response) -> str:
+    assert response.status_code == 303, response.text
+    location = urlparse(response.headers["location"])
+    assert f"{location.scheme}://{location.netloc}{location.path}" == f"{FRONTEND}/planner/agenda"
+    query = parse_qs(location.query)
+    assert query["google"] == ["error"]
+    assert set(query) == {"google", "reason"}
+    return query["reason"][0]
 
 
 async def test_google_connect_select_and_disconnect(app: FastAPI, auth_client: AsyncClient) -> None:
@@ -64,15 +78,72 @@ async def test_google_connect_select_and_disconnect(app: FastAPI, auth_client: A
     assert (await auth_client.get("/planner/google/calendars")).status_code == 404
 
 
-async def test_google_callback_rejects_forged_state(auth_client: AsyncClient) -> None:
-    response = await auth_client.get(
-        "/planner/google/callback", params={"code": "abc", "state": "forged"}
+async def test_google_callback_redirects_failures_with_a_reason(
+    app: FastAPI, auth_client: AsyncClient
+) -> None:
+    use_fake_google(app, FakeGoogleCalendarApi())
+    url = (await auth_client.get("/planner/google/authorize")).json()["authorization_url"]
+    state = parse_qs(urlparse(url).query)["state"][0]
+
+    async def callback(**params: str) -> Response:
+        return await auth_client.get(
+            "/planner/google/callback", params=params, headers={"Authorization": ""}
+        )
+
+    response = await callback(error="access_denied", state=state)
+    assert _redirect_reason(response) == "access_denied"
+    # Google's own error text is never echoed back.
+    response = await callback(error="server_error<script>", state=state)
+    assert _redirect_reason(response) == "authorization_failed"
+    assert _redirect_reason(await callback(state=state)) == "authorization_failed"
+    assert _redirect_reason(await callback(code="abc")) == "invalid_state"
+    response = await callback(code="abc", state="forged", scope=CALENDAR_SCOPE)
+    assert _redirect_reason(response) == "invalid_state"
+    response = await callback(code="abc", state=state, scope="email")
+    assert _redirect_reason(response) == "missing_scope"
+    response = await callback(code="bad", state=state, scope=CALENDAR_SCOPE)
+    assert _redirect_reason(response) == "exchange_failed"
+    assert "bad" not in response.headers["location"]
+
+    # None of the failures connected the account.
+    response = await auth_client.get("/planner/google/status")
+    assert response.json()["connected"] is False
+
+
+async def test_google_status(app: FastAPI, auth_client: AsyncClient) -> None:
+    api = FakeGoogleCalendarApi()
+    use_fake_google(app, api)
+    disconnected = {"connected": False, "calendar_id": None, "last_synced_at": None}
+    response = await auth_client.get("/planner/google/status")
+    assert response.status_code == 200, response.text
+    assert response.json() == disconnected
+
+    await connect_google(auth_client)
+    response = await auth_client.get("/planner/google/status")
+    assert response.json() == {"connected": True, "calendar_id": "primary", "last_synced_at": None}
+
+    await auth_client.put(
+        "/planner/google/calendar", json={"calendar_id": "family@group.calendar.google.com"}
     )
+    assert (await auth_client.post("/planner/google/sync")).status_code == 200
+    status = (await auth_client.get("/planner/google/status")).json()
+    assert status["connected"] is True
+    assert status["calendar_id"] == "family@group.calendar.google.com"
+    assert status["last_synced_at"] is not None
+    # The status never talks to Google.
+    calls = len(api.requests)
+    await auth_client.get("/planner/google/status")
+    assert len(api.requests) == calls
+
+    other = await register_and_login(auth_client, "other@example.com")
+    response = await auth_client.get("/planner/google/status", headers=other)
+    assert response.json() == disconnected
+
+    assert (await auth_client.delete("/planner/google")).status_code == 204
+    assert (await auth_client.get("/planner/google/status")).json() == disconnected
+
+    response = await auth_client.get("/planner/google/status", headers={"Authorization": ""})
     assert response.status_code == 401
-    response = await auth_client.get(
-        "/planner/google/callback", params={"error": "access_denied", "state": "x"}
-    )
-    assert response.status_code == 422
 
 
 async def test_google_pull_into_agenda(app: FastAPI, auth_client: AsyncClient) -> None:

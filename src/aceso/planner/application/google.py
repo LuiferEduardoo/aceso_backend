@@ -1,7 +1,9 @@
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 from aceso.planner.domain.entities import GoogleCalendar, GoogleCalendarLink, OAuthTokens
+from aceso.planner.domain.errors import GoogleScopeNotGrantedError
 from aceso.planner.domain.ports import (
     CalendarEventRepository,
     GoogleCalendarGateway,
@@ -69,7 +71,7 @@ class CompleteGoogleAuthorization:
     async def execute(self, code: str, state: str, scope: str | None) -> int:
         user_id = self._states.verify(state)
         if scope is not None and CALENDAR_SCOPE not in scope.split():
-            raise InvalidOperationError("Google Calendar access was not granted")
+            raise GoogleScopeNotGrantedError("Google Calendar access was not granted")
         tokens = await self._gateway.exchange_code(code)
         if not tokens.refresh_token:
             previous = await self._credentials.get(user_id, PROVIDER)
@@ -150,3 +152,28 @@ class DisconnectGoogle:
     async def execute(self, user_id: int) -> None:
         await self._credentials.delete(user_id, PROVIDER)
         await self._links.delete(user_id)
+
+
+@dataclass(slots=True, frozen=True)
+class GoogleConnectionStatus:
+    connected: bool
+    calendar_id: str | None = None
+    last_synced_at: datetime | None = None
+
+
+class GetGoogleStatus:
+    """Whether the user connected Google and which calendar they sync. Never calls Google."""
+
+    def __init__(self, credentials: CredentialStore, links: GoogleCalendarLinkRepository) -> None:
+        self._credentials = credentials
+        self._links = links
+
+    async def execute(self, user_id: int) -> GoogleConnectionStatus:
+        if await self._credentials.get(user_id, PROVIDER) is None:
+            return GoogleConnectionStatus(connected=False)
+        link = await self._links.get(user_id)
+        if link is None:
+            return GoogleConnectionStatus(connected=True)
+        return GoogleConnectionStatus(
+            connected=True, calendar_id=link.calendar_id, last_synced_at=link.last_synced_at
+        )

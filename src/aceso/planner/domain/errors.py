@@ -1,4 +1,4 @@
-from aceso.shared.domain.errors import IntegrationError
+from aceso.shared.domain.errors import IntegrationError, InvalidOperationError
 
 
 class SyncTokenExpiredError(IntegrationError):
@@ -7,3 +7,7 @@ class SyncTokenExpiredError(IntegrationError):
 
 class RemoteEventMissingError(IntegrationError):
     """The Google event we tried to change no longer exists (404/410)."""
+
+
+class GoogleScopeNotGrantedError(InvalidOperationError):
+    """The user finished the Google consent screen without granting Calendar access."""

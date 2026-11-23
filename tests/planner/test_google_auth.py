@@ -4,6 +4,8 @@ import pytest
 
 from aceso.planner.application.google import (
     CompleteGoogleAuthorization,
+    GetGoogleStatus,
+    GoogleConnectionStatus,
     ListGoogleCalendars,
     SelectGoogleCalendar,
     valid_google_tokens,
@@ -14,6 +16,7 @@ from aceso.planner.domain.entities import (
     GoogleCalendarLink,
     OAuthTokens,
 )
+from aceso.planner.domain.errors import GoogleScopeNotGrantedError
 from aceso.planner.infrastructure.google_calendar import GoogleCalendarClient
 from aceso.shared.domain.credentials import IntegrationProvider
 from aceso.shared.domain.errors import (
@@ -93,10 +96,11 @@ async def test_complete_authorization_rejects_bad_state_scope_and_code() -> None
     )
     with pytest.raises(AuthenticationError):
         await use_case.execute("code", "forged", None)
-    with pytest.raises(InvalidOperationError):
+    with pytest.raises(GoogleScopeNotGrantedError):
         await use_case.execute("code", "state-1", "email")
-    with pytest.raises(InvalidOperationError):
+    with pytest.raises(InvalidOperationError) as excinfo:
         await use_case.execute("bad", "state-1", None)
+    assert not isinstance(excinfo.value, GoogleScopeNotGrantedError)
 
 
 async def test_tokens_refresh_keeps_refresh_token() -> None:
@@ -158,3 +162,20 @@ async def test_list_and_select_calendar() -> None:
         await select.execute(1, "holidays@group.v.calendar.google.com")
     with pytest.raises(NotFoundError):
         await select.execute(1, "nope")
+
+
+async def test_google_status_reports_connection_and_linked_calendar() -> None:
+    store, links = FakeCredentialStore(), FakeGoogleCalendarLinkRepository()
+    status = GetGoogleStatus(store, links)
+    assert await status.execute(1) == GoogleConnectionStatus(connected=False)
+
+    await store.save(1, GOOGLE, _payload(timedelta(hours=1)))
+    assert await status.execute(1) == GoogleConnectionStatus(connected=True)
+
+    synced = datetime(2026, 10, 10, 12, tzinfo=UTC)
+    await links.save(GoogleCalendarLink(user_id=1, calendar_id="family", last_synced_at=synced))
+    assert await status.execute(1) == GoogleConnectionStatus(
+        connected=True, calendar_id="family", last_synced_at=synced
+    )
+    # Another user's credentials and link never leak into this user's status.
+    assert await status.execute(2) == GoogleConnectionStatus(connected=False)
